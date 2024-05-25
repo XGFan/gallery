@@ -1,0 +1,26 @@
+.fixed-widgets-rt span {
+  font-size: 1.5rem;
+}
+
+.fixed-widgets-mt span {
+  font-size: 1.2rem;
+}
+
+.jg-caption {
+  background-color: black;
+  box-sizing: border-box;
+  color: white;
+  display: block;
+  cursor: pointer;
+  position: absolute;
+  opacity: 0.7;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 5px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 300;
+  font-family: sans-serif;
+  overflow-y: hidden;
+}
