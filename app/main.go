@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"log"
 	_ "net/http/pprof"
+	"os"
 	"os/exec"
 	"runtime"
 )
@@ -17,39 +18,36 @@ func main() {
 	conf := new(config.GalleryConfig)
 	bytes, err := utils.LocateAndRead("gallery.yaml")
 	if err != nil {
-		log.Println("Read gallery.yaml fail, fallback")
+		if !os.IsNotExist(err) {
+			log.Println("Read gallery.yaml fail, fallback")
+		}
 	} else {
 		log.Println("Load config from gallery.yaml")
 		err = yaml.Unmarshal(bytes, conf)
 		if err != nil {
 			log.Println("Parse gallery.yaml fail, fallback")
 		}
+		log.Printf("Load Config: %+v", conf)
 	}
 	conf.Setup()
-	log.Printf("Load Config: %+v", conf)
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.Default()
 	engine.Use(func(context *gin.Context) {
 		context.Writer.Header().Set("Server", "SAIO")
 	})
-	gallery.EnableViewer(engine, *conf)
+	gallery.Init(engine, *conf)
 	openBrowser(fmt.Sprintf("http://localhost:%d/", conf.Port))
-	engine.Run(fmt.Sprintf(":%d", conf.Port))
+	_ = engine.Run(fmt.Sprintf(":%d", conf.Port))
 }
 
 func openBrowser(url string) {
-	var err error
+	log.Printf("Open %s", url)
 	switch runtime.GOOS {
 	case "linux":
-		err = exec.Command("xdg-open", url).Start()
+		_ = exec.Command("xdg-open", url).Start()
 	case "windows":
-		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+		_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
 	case "darwin":
-		err = exec.Command("open", url).Start()
-	default:
-		err = fmt.Errorf("unsupported platform")
-	}
-	if err != nil {
-		log.Fatal(err)
+		_ = exec.Command("open", url).Start()
 	}
 }

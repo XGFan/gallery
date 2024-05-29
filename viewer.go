@@ -101,7 +101,7 @@ Album mode: Show current directory name and children directory names which conta
 Image mode: Show current directory and children images
 */
 
-func EnableViewer(s *gin.Engine, conf config.GalleryConfig) {
+func Init(s *gin.Engine, conf config.GalleryConfig) {
 	ctx, _ := context.WithCancel(context.Background())
 	originFs := storage.NewFs(conf.Resource.Base)
 	cacheFs := storage.NewFs(conf.Cache)
