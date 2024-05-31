@@ -1,4 +1,4 @@
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {Album, AppCtx, calColumns, DEFAULT_PAGE_SIZE} from "./dto.tsx";
 import "./viewer.css"
 import PhotoAlbum from "react-photo-album";
@@ -9,13 +9,16 @@ import "yet-another-react-lightbox/styles.css";
 import {useLoaderData, useNavigate} from "react-router-dom";
 import {Button, Dropdown} from "antd";
 import {AppstoreOutlined, FolderOpenOutlined, PictureOutlined, SmileOutlined} from "@ant-design/icons";
+import {useGesture} from "@use-gesture/react";
 
 const DEFAULT_PLUGINS = [
   Fullscreen,
   Slideshow,
   Zoom
 ]
-const RANDOM_PLUGINS = [Zoom, Fullscreen, Slideshow];
+const RANDOM_PLUGINS = [Zoom, Fullscreen, Slideshow]
+
+const DEFAULT_ROW_HEIGHT = 500
 
 const GoIcon = createIcon("Go", <path
   d="M 17.92 4.288 a 2.312 2.312 90 0 0 -2.4 -0.568 L 4.2 7.504 a 2.32 2.32 90 0 0 -0.096 4.376 l 4.192 1.6 h 0 a 0.744 0.744 90 0 1 0.424 0.416 l 1.6 4.2 A 2.296 2.296 90 0 0 12.488 19.6 h 0.056 a 2.304 2.304 90 0 0 2.152 -1.6 L 18.48 6.664 A 2.312 2.312 90 0 0 17.92 4.288 Z M 17 6.16 L 13.176 17.504 a 0.704 0.704 90 0 1 -0.672 0.496 a 0.736 0.736 90 0 1 -0.696 -0.464 l -1.6 -4.2 a 2.328 2.328 90 0 0 -1.336 -1.344 l -4.2 -1.6 A 0.72 0.72 90 0 1 4.2 9.696 a 0.704 0.704 90 0 1 0.496 -0.672 L 16.04 5.24 A 0.728 0.728 90 0 1 17 6.16 Z"/>);
@@ -47,9 +50,20 @@ const modes = [
 export default function Viewer() {
   const fullAlbum = (useLoaderData() as AppCtx<Album>).data;
   const [index, setIndex] = useState(-1);
+  const [rowHeight, setRowHeight] = useState(DEFAULT_ROW_HEIGHT);
   const [album, setAlbum] = useState(fullAlbum.subAlbum(DEFAULT_PAGE_SIZE))
   const navigate = useNavigate();
-
+  useEffect(() => {
+    const handler = (e: Event) => e.preventDefault()
+    document.addEventListener('gesturestart', handler)
+    document.addEventListener('gesturechange', handler)
+    document.addEventListener('gestureend', handler)
+    return () => {
+      document.removeEventListener('gesturestart', handler)
+      document.removeEventListener('gesturechange', handler)
+      document.removeEventListener('gestureend', handler)
+    }
+  }, [])
   useEffect(() => {
     console.log("full album has changed", fullAlbum)
     window.scrollTo(0, 0)
@@ -61,6 +75,19 @@ export default function Viewer() {
     }
   }, [fullAlbum]);
 
+  const divRef = useRef<HTMLDivElement>(null)
+
+  useGesture(
+    {
+      onPinch: (state) => {
+        setRowHeight(DEFAULT_ROW_HEIGHT * state.offset[0])
+      },
+    },
+    {
+      target: divRef,
+      pinch: {scaleBounds: {min: 0.5, max: 2}, rubberband: true},
+    }
+  )
 
   function fetchNew() {
     console.log("concat new data")
@@ -72,6 +99,7 @@ export default function Viewer() {
     return (
       <IconButton label="My button" icon={GoIcon} onClick={() => {
         if (currentSlide) {
+          // eslint-disable-next-line
           const key: string = (currentSlide as any).key
           const index = key.lastIndexOf('/');
           setIndex(-1)
@@ -125,46 +153,48 @@ export default function Viewer() {
         </Button>
       </Dropdown>
     </div>
-    <InfiniteScroll dataLength={album.images.length}
-                    hasMore={fullAlbum.images.length > album.images.length}
-                    loader={<></>}
-                    next={fetchNew}>
-      <PhotoAlbum
-        layout="rows"
-        photos={album.mode === 'random' ? [] : album.images}
-        targetRowHeight={() => 500}
-        spacing={() => 0}
-        columns={calColumns}
-        onClick={({photo, index}) => {
-          switch (album.mode) {
-            case 'album':
-              navigate(`/${photo.key}?mode=image`)
-              break;
-            case 'image':
-              console.log("open image")
-              setIndex(index);
-              break;
-            case 'explore':
-              if (photo.imageType === 'image') {
+    <div ref={divRef}>
+      <InfiniteScroll dataLength={album.images.length}
+                      hasMore={fullAlbum.images.length > album.images.length}
+                      loader={<></>}
+                      next={fetchNew}>
+        <PhotoAlbum
+          layout="rows"
+          photos={album.mode === 'random' ? [] : album.images}
+          targetRowHeight={() => rowHeight}
+          spacing={() => 0}
+          columns={calColumns}
+          onClick={({photo, index}) => {
+            switch (album.mode) {
+              case 'album':
+                navigate(`/${photo.key}?mode=image`)
+                break;
+              case 'image':
+                console.log("open image")
                 setIndex(index);
-              } else {
-                navigate(`/${photo.key}?mode=explore`)
-              }
-              break;
-            default:
-              console.log("unknown operation", album.mode, photo, index)
-              break;
-          }
-        }}
+                break;
+              case 'explore':
+                if (photo.imageType === 'image') {
+                  setIndex(index);
+                } else {
+                  navigate(`/${photo.key}?mode=explore`)
+                }
+                break;
+              default:
+                console.log("unknown operation", album.mode, photo, index)
+                break;
+            }
+          }}
 
-        renderPhoto={({photo, wrapperStyle, renderDefaultPhoto}) => {
-          return <div style={{position: "relative", ...wrapperStyle}}>
-            {renderDefaultPhoto({wrapped: true})}
-            {photo.imageType === 'directory' ? <span className="jg-caption">{photo.name}</span> : <span></span>}
-          </div>
-        }}
-      />
-    </InfiniteScroll>
+          renderPhoto={({photo, wrapperStyle, renderDefaultPhoto}) => {
+            return <div style={{position: "relative", ...wrapperStyle}}>
+              {renderDefaultPhoto({wrapped: true})}
+              {photo.imageType === 'directory' ? <span className="jg-caption">{photo.name}</span> : <span></span>}
+            </div>
+          }}
+        />
+      </InfiniteScroll>
+    </div>
     <div className="fixed-widgets-rb">
       <Button type="text" size="small">{album.images.length}/{fullAlbum.images.length}</Button>
     </div>
