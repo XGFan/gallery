@@ -220,8 +220,6 @@ export default function Viewer() {
           {rowHeight}
         </Col>
       </Row>
-
-
     </Modal>
   </>
 }
