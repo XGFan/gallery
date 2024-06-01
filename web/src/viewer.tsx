@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useState} from "react";
 import {Album, AppCtx, calColumns, DEFAULT_PAGE_SIZE} from "./dto.tsx";
 import "./viewer.css"
 import PhotoAlbum from "react-photo-album";
@@ -7,9 +7,8 @@ import Lightbox, {createIcon, IconButton, useLightboxState} from "yet-another-re
 import {Fullscreen, Slideshow, Zoom} from "yet-another-react-lightbox/plugins";
 import "yet-another-react-lightbox/styles.css";
 import {useLoaderData, useNavigate} from "react-router-dom";
-import {Button, Dropdown} from "antd";
-import {AppstoreOutlined, FolderOpenOutlined, PictureOutlined, SmileOutlined} from "@ant-design/icons";
-import {useGesture} from "@use-gesture/react";
+import {Button, Col, Dropdown, Modal, Row, Slider} from "antd";
+import {AppstoreOutlined, FolderOpenOutlined, PictureOutlined, SettingOutlined, SmileOutlined} from "@ant-design/icons";
 
 const DEFAULT_PLUGINS = [
   Fullscreen,
@@ -45,25 +44,32 @@ const modes = [
     icon: <SmileOutlined/>,
     label: "Random"
   },
+  {
+    key: 'config',
+    icon: <SettingOutlined/>,
+    label: "Config"
+  },
 ]
 
 export default function Viewer() {
   const fullAlbum = (useLoaderData() as AppCtx<Album>).data;
   const [index, setIndex] = useState(-1);
-  const [rowHeight, setRowHeight] = useState(DEFAULT_ROW_HEIGHT);
+  const [rowHeight, setRowHeight] = useState(() => {
+    //parse string to number
+    const height: number = Number(localStorage.getItem("row-height"));
+    console.log(`localstorage: ${height}`)
+    if (height == null || isNaN(height) || height < 200 || height > 1000) {
+      return DEFAULT_ROW_HEIGHT
+    } else {
+      return height
+    }
+  });
   const [album, setAlbum] = useState(fullAlbum.subAlbum(DEFAULT_PAGE_SIZE))
+  const [showConfig, setShowConfig] = useState(false)
   const navigate = useNavigate();
   useEffect(() => {
-    const handler = (e: Event) => e.preventDefault()
-    document.addEventListener('gesturestart', handler)
-    document.addEventListener('gesturechange', handler)
-    document.addEventListener('gestureend', handler)
-    return () => {
-      document.removeEventListener('gesturestart', handler)
-      document.removeEventListener('gesturechange', handler)
-      document.removeEventListener('gestureend', handler)
-    }
-  }, [])
+    localStorage.setItem("row-height", String(rowHeight));
+  }, [rowHeight])
   useEffect(() => {
     console.log("full album has changed", fullAlbum)
     window.scrollTo(0, 0)
@@ -75,20 +81,6 @@ export default function Viewer() {
     }
   }, [fullAlbum]);
 
-  const divRef = useRef<HTMLDivElement>(null)
-
-  useGesture(
-    {
-      onPinch: (state) => {
-        setRowHeight(DEFAULT_ROW_HEIGHT * state.offset[0])
-      },
-    },
-    {
-      target: divRef,
-      pinch: {scaleBounds: {min: 0.5, max: 2}, rubberband: true},
-    }
-  )
-
   function fetchNew() {
     console.log("concat new data")
     setAlbum(fullAlbum.subAlbum(album.images.length + DEFAULT_PAGE_SIZE))
@@ -97,7 +89,7 @@ export default function Viewer() {
   function GoToDirectory() {
     const {currentSlide} = useLightboxState();
     return (
-      <IconButton label="My button" icon={GoIcon} onClick={() => {
+      <IconButton label="Location" icon={GoIcon} onClick={() => {
         if (currentSlide) {
           // eslint-disable-next-line
           const key: string = (currentSlide as any).key
@@ -140,7 +132,11 @@ export default function Viewer() {
         menu={{
           inlineIndent: 0,
           onClick: function (e) {
-            navigate(`/${album.path.path}?mode=${e.key}`)
+            if (e.key == 'config') {
+              setShowConfig(true)
+            } else {
+              navigate(`/${album.path.path}?mode=${e.key}`)
+            }
           },
           items:
             modes.filter(it => it.key != album.mode),
@@ -153,50 +149,79 @@ export default function Viewer() {
         </Button>
       </Dropdown>
     </div>
-    <div ref={divRef}>
-      <InfiniteScroll dataLength={album.images.length}
-                      hasMore={fullAlbum.images.length > album.images.length}
-                      loader={<></>}
-                      next={fetchNew}>
-        <PhotoAlbum
-          layout="rows"
-          photos={album.mode === 'random' ? [] : album.images}
-          targetRowHeight={() => rowHeight}
-          spacing={() => 0}
-          columns={calColumns}
-          onClick={({photo, index}) => {
-            switch (album.mode) {
-              case 'album':
-                navigate(`/${photo.key}?mode=image`)
-                break;
-              case 'image':
-                console.log("open image")
+    <InfiniteScroll dataLength={album.images.length}
+                    hasMore={fullAlbum.images.length > album.images.length}
+                    loader={<></>}
+                    next={fetchNew}>
+      <PhotoAlbum
+        layout="rows"
+        photos={album.mode === 'random' ? [] : album.images}
+        targetRowHeight={() => rowHeight}
+        spacing={() => 0}
+        columns={calColumns}
+        onClick={({photo, index}) => {
+          switch (album.mode) {
+            case 'album':
+              navigate(`/${photo.key}?mode=image`)
+              break;
+            case 'image':
+              console.log("open image")
+              setIndex(index);
+              break;
+            case 'explore':
+              if (photo.imageType === 'image') {
                 setIndex(index);
-                break;
-              case 'explore':
-                if (photo.imageType === 'image') {
-                  setIndex(index);
-                } else {
-                  navigate(`/${photo.key}?mode=explore`)
-                }
-                break;
-              default:
-                console.log("unknown operation", album.mode, photo, index)
-                break;
-            }
-          }}
+              } else {
+                navigate(`/${photo.key}?mode=explore`)
+              }
+              break;
+            default:
+              console.log("unknown operation", album.mode, photo, index)
+              break;
+          }
+        }}
 
-          renderPhoto={({photo, wrapperStyle, renderDefaultPhoto}) => {
-            return <div style={{position: "relative", ...wrapperStyle}}>
-              {renderDefaultPhoto({wrapped: true})}
-              {photo.imageType === 'directory' ? <span className="jg-caption">{photo.name}</span> : <span></span>}
-            </div>
-          }}
-        />
-      </InfiniteScroll>
-    </div>
+        renderPhoto={({photo, wrapperStyle, renderDefaultPhoto}) => {
+          return <div style={{position: "relative", ...wrapperStyle}}>
+            {renderDefaultPhoto({wrapped: true})}
+            {photo.imageType === 'directory' ? <span className="jg-caption">{photo.name}</span> : <span></span>}
+          </div>
+        }}
+      />
+    </InfiniteScroll>
     <div className="fixed-widgets-rb">
       <Button type="text" size="small">{album.images.length}/{fullAlbum.images.length}</Button>
     </div>
+    <Modal open={showConfig}
+           footer={null}
+           title={null}
+           closeIcon={null}
+           onCancel={() => {
+             setShowConfig(false)
+           }}
+    >
+      <Row style={{alignItems: 'center'}}>
+        <Col span={4} style={{textAlign: "center"}}>
+          Row Height
+        </Col>
+        <Col span={16}>
+          <Slider
+            min={250}
+            max={1000}
+            onChange={setRowHeight}
+            value={rowHeight}
+            step={50}
+            tooltip={{
+              open: false
+            }}
+          />
+        </Col>
+        <Col span={4} style={{textAlign: "center"}}>
+          {rowHeight}
+        </Col>
+      </Row>
+
+
+    </Modal>
   </>
 }

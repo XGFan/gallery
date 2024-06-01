@@ -1,8 +1,8 @@
 import {useState} from "react";
 import {Button, Drawer} from "antd";
-import {ControlOutlined} from "@ant-design/icons";
 import './sidebar.css'
 import FileTree from "./file-tree.tsx";
+import {HddOutlined} from "@ant-design/icons";
 
 export default function Sidebar() {
   const [isDrawerVisible, setIsDrawerVisible] = useState(false);
@@ -17,7 +17,7 @@ export default function Sidebar() {
     <div>
       <div className="fixed-widgets-lt" hidden={isDrawerVisible} onClick={showDrawer}>
         <Button type="text" size="large">
-          <ControlOutlined style={{fontSize: '1.5rem'}}/>
+          <HddOutlined style={{fontSize: '1.5rem'}}/>
         </Button>
       </div>
       <Drawer
@@ -27,6 +27,7 @@ export default function Sidebar() {
         closable={false}
         onClose={onClose}
         open={isDrawerVisible}
+        title={<h1>Location</h1>}
       >
         <FileTree/>
       </Drawer>

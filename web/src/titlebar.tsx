@@ -1,7 +1,7 @@
 import {useLoaderData, useNavigate} from "react-router-dom";
 import {Album, AppCtx, Mode, Path} from "./dto.tsx";
 import {useEffect, useState} from "react";
-import {Button, Dropdown} from "antd";
+import {Button, Dropdown, Typography} from "antd";
 import {HomeOutlined} from "@ant-design/icons";
 import {MenuItemType} from "antd/lib/menu/hooks/useItems";
 
@@ -58,9 +58,12 @@ export default function TitleBar() {
       }}
     >
       <Button
+        style={{
+          maxWidth: '100%'
+        }}
         type="text"
         size="large">
-        {title}
+        <Typography.Text ellipsis={true}>{title}</Typography.Text>
       </Button>
     </Dropdown>
   </div>
