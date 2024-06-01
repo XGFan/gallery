@@ -202,7 +202,7 @@ export default function Viewer() {
     >
       <Row style={{alignItems: 'center'}}>
         <Col span={4} style={{textAlign: "center"}}>
-          Row Height
+          Height
         </Col>
         <Col span={16}>
           <Slider
