@@ -21,7 +21,7 @@ WORKDIR /app/app
 RUN GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -tags vips -o gallery .
 
 FROM docker.test4x.com/xgfan/saio-base:20240311 AS runner
-COPY --from=go-builder /app/gallery /app/gallery
+COPY --from=go-builder /app/app/gallery /app/gallery
 USER root
 WORKDIR /app/
 EXPOSE 8000
