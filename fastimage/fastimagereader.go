@@ -9,6 +9,7 @@ import (
 
 // GetInfoReader detects a image info of data.
 func GetInfoReader(file io.ReadSeekCloser) (info Info) {
+	defer file.Close()
 	p := make([]byte, 32)
 	_, err := file.Read(p[:12])
 	if err != nil {
