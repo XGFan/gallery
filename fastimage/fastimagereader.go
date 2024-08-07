@@ -166,7 +166,9 @@ func JpegReaderPlain(file io.ReadSeeker, info *Info) {
 				return
 			}
 			//drop exif (app name)
-			orientationFunc = parseOrientation(exifBytes[6:])
+			if length > 6 {
+				orientationFunc = parseOrientation(exifBytes[6:])
+			}
 			fallthrough
 		default:
 			i += 2 + int(length)
