@@ -1,0 +1,20 @@
+kind: pipeline
+name: default
+type: kubernetes
+
+steps:
+  - name: "build docker image and publish"
+    image: plugins/docker
+    settings:
+      repo: "docker.test4x.com/xgfan/gallery"
+      registry: "docker.test4x.com"
+      mirror: "https://docker-proxy.test4x.com"
+      tags:
+        - "${DRONE_COMMIT_SHA:0:8}"
+        - latest
+      build_args:
+        - GOPROXY=https://registry.test4x.com/repository/go-proxy/
+      username:
+        from_secret: docker_username
+      password:
+        from_secret: docker_password
