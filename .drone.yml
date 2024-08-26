@@ -1,0 +1,41 @@
+kind: pipeline
+name: default
+type: kubernetes
+
+steps:
+  - name: "build docker image and publish"
+    image: plugins/docker
+    settings:
+      repo: "docker.test4x.com/xgfan/gallery"
+      registry: "docker.test4x.com"
+      mirror: "https://docker-proxy.test4x.com"
+      tags:
+        - "${DRONE_COMMIT_SHA:0:8}"
+        - latest
+      build_args:
+        - GOPROXY=https://registry.test4x.com/repository/go-proxy/
+      username:
+        from_secret: docker_username
+      password:
+        from_secret: docker_password
+  - name: deploy
+    image: docker.test4x.com/xgfan/d8s:5940d55d
+    settings:
+      deployment: gallery
+      app: gallery
+      image: "docker.test4x.com/xgfan/gallery:${DRONE_COMMIT_SHA:0:8}"
+      kubeconfig:
+        from_secret: kubeconfig
+  - name: notification
+    when:
+      status:
+        - success
+        - failure
+    image: docker.test4x.com/xgfan/drone-bark:9dccad32
+    environment:
+      debug: true
+    settings:
+      token:
+        from_secret: bark_token
+      title: "{DRONE_REPO} {DRONE_BUILD_STATUS}"
+      content: "{DRONE_COMMIT_MESSAGE}"
