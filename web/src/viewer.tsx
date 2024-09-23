@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react";
-import {Album, AppCtx, calColumns, DEFAULT_PAGE_SIZE} from "./dto.tsx";
+import {Album, AppCtx, calColumns, customEncodeURI, DEFAULT_PAGE_SIZE} from "./dto.tsx";
 import "./viewer.css"
 import PhotoAlbum from "react-photo-album";
 import InfiniteScroll from "react-infinite-scroll-component";
@@ -135,7 +135,7 @@ export default function Viewer() {
             if (e.key == 'config') {
               setShowConfig(true)
             } else {
-              navigate(`/${album.path.path}?mode=${e.key}`)
+              navigate(`/${customEncodeURI(album.path.path)}?mode=${e.key}`)
             }
           },
           items:

@@ -18,13 +18,13 @@ function data2Tree(obj: object, parent: { title: string, key: string } | null): 
         if (v == null || Object.keys(v as object).length === 0) {
           return {
             title: k,
-            key: p.key === '' ? k : (p.key + '/' + k),
+            key: p.key === '' ? encodeURIComponent(k) : (p.key + '/' + encodeURIComponent(k)),
             isLeaf: true
           }
         } else {
           return data2Tree(v, {
             title: k,
-            key: p.key === '' ? k : (p.key + '/' + k)
+            key: p.key === '' ? encodeURIComponent(k) : (p.key + '/' + encodeURIComponent(k))
           })
         }
       })

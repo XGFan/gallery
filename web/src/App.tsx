@@ -2,7 +2,7 @@ import './App.css'
 import Viewer from "./viewer.tsx";
 import {createBrowserRouter, RouterProvider} from "react-router-dom";
 import axios from "axios";
-import {Album, generatePath, Mode, resp2Image} from "./dto.tsx";
+import {Album, customEncodeURI, generatePath, Mode, resp2Image} from "./dto.tsx";
 import TitleBar from "./titlebar.tsx";
 import Sidebar from "./sidebar.tsx";
 import {useEffect} from "react";
@@ -29,7 +29,7 @@ const router = createBrowserRouter([
       loader: async ({request, params}) => {
         const searchParams = new URL(request.url).searchParams;
         const mode = (searchParams.get("mode") ?? "album") as Mode
-        const url = (params['*'] ?? '')
+        const url = customEncodeURI((params['*'] ?? ''))
         const requestMode = mode !== 'random' ? mode : 'image'
         const resp = await axios.get(`/api/${requestMode}/${url}`, {});
         const images = resp2Image(resp.data as never, requestMode);

@@ -193,7 +193,7 @@ export interface TaskPage {
   data: Task[]
 }
 
-function customEncodeURI(s: string): string {
+export function customEncodeURI(s: string): string {
   return s.split("/").map(it => encodeURIComponent(it)).join("/")
 }
 
@@ -206,7 +206,7 @@ export function resp2Image(resp: unknown, mode: string): ImgData[] {
       }
       return true
     }).map(it => ({
-      key: it.path,
+      key: customEncodeURI(it.path),
       src: customEncodeURI('/thumbnail/' + it.cover.path),
       imageType: "directory",
       name: it.name,
@@ -216,7 +216,7 @@ export function resp2Image(resp: unknown, mode: string): ImgData[] {
   }
   if (mode === "image") {
     return (resp as ImageNode[]).map(it => ({
-      key: it.path,
+      key: customEncodeURI(it.path),
       src: customEncodeURI('/file/' + it.path),
       imageType: "image",
       name: it.name,
@@ -233,7 +233,7 @@ export function resp2Image(resp: unknown, mode: string): ImgData[] {
         return true
       })
       .map(it => ({
-        key: it.path,
+        key: customEncodeURI(it.path),
         src: customEncodeURI('/thumbnail/' + it.cover.path),
         imageType: "directory",
         name: it.name,
@@ -241,7 +241,7 @@ export function resp2Image(resp: unknown, mode: string): ImgData[] {
         height: it.cover.height
       } as ImgData)) ?? [];
     const images = ((resp as SimpleDirectory).images ?? []).map(it => ({
-      key: it.path,
+      key: customEncodeURI(it.path),
       src: customEncodeURI('/file/' + it.path),
       imageType: "image",
       name: it.name,
@@ -252,7 +252,7 @@ export function resp2Image(resp: unknown, mode: string): ImgData[] {
   } else if (mode === 'random') {
     const data = resp as NodeWithParent
     return [{
-      key: data.path,
+      key: customEncodeURI(data.path),
       src: customEncodeURI('/file/' + data.path),
       imageType: "image",
       name: data.name,
@@ -325,7 +325,8 @@ export function generatePath(url: string): Path {
   let result = RootNode
   url.split("/").forEach(path => {
     if (path !== '') {
-      result = new Path(path, result)
+      const name = decodeURIComponent(path)
+      result = new Path(name, result)
     }
   })
   return result
