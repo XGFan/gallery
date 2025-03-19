@@ -19,9 +19,10 @@ type GalleryConfig struct {
 }
 
 type ResourceConfig struct {
-	Base           string   `yaml:"base"`
-	Exclude        []string `yaml:"exclude"`
-	ForceThumbnail []string `yaml:"force_thumbnail"`
+	Base           string              `yaml:"base"`
+	Exclude        []string            `yaml:"exclude"`
+	ForceThumbnail []string            `yaml:"force_thumbnail"`
+	VirtualPath    map[string][]string `yaml:"virtual_path"`
 }
 
 func (g *GalleryConfig) Setup() {

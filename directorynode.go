@@ -9,20 +9,48 @@ import (
 	"strings"
 )
 
-type DirectoryNode struct {
+type TraverseNode struct {
 	Node
 	Images      []ImageNode
 	Others      []Node
-	Directories map[string]*DirectoryNode
+	Directories map[string]*TraverseNode
 	CoverIndex  int
 }
 
-func (dn *DirectoryNode) explore() *SimpleDirectory {
+func MergeVirtualPath(name string, nodes []TraverseNode) TraverseNode {
+	newNode := TraverseNode{
+		Node: Node{
+			Name: name,
+			Path: name,
+		},
+		Images:      make([]ImageNode, 0),
+		Others:      make([]Node, 0),
+		Directories: make(map[string]*TraverseNode),
+	}
+
+	for _, node := range nodes {
+		newNode.Images = append(newNode.Images, node.Images...)
+		newNode.Others = append(newNode.Others, node.Others...)
+		for dirName, dirNode := range node.Directories {
+			if existingDir, exists := newNode.Directories[dirName]; exists {
+				virtualPath := MergeVirtualPath(dirName, []TraverseNode{*existingDir, *dirNode})
+				newNode.Directories[dirName] = &virtualPath
+			} else {
+				newNode.Directories[dirName] = dirNode
+			}
+		}
+	}
+	return newNode
+}
+
+func (dn *TraverseNode) explore() *SimpleDirectory {
 	var subDirectories = make([]DirNode, 0, len(dn.Directories))
 	for _, directory := range dn.Directories {
 		subDirectories = append(subDirectories, DirNode{
-			Name:  directory.Name,
-			Path:  directory.Path,
+			Node: Node{
+				Name: directory.Name,
+				Path: directory.Path,
+			},
 			Cover: directory.Cover(),
 		})
 	}
@@ -33,7 +61,7 @@ func (dn *DirectoryNode) explore() *SimpleDirectory {
 	}
 }
 
-func (dn *DirectoryNode) dump() map[string]Size {
+func (dn *TraverseNode) dump() map[string]Size {
 	m := make(map[string]Size)
 	for _, img := range dn.image() {
 		m[img.Path] = img.Size
@@ -41,7 +69,7 @@ func (dn *DirectoryNode) dump() map[string]Size {
 	return m
 }
 
-func (dn *DirectoryNode) load(cache map[string]Size) {
+func (dn *TraverseNode) load(cache map[string]Size) {
 	for i := range dn.Images {
 		if dn.Images[i].Size == EmptySize {
 			dn.Images[i].Size = cache[dn.Images[i].Path]
@@ -52,19 +80,19 @@ func (dn *DirectoryNode) load(cache map[string]Size) {
 	}
 }
 
-func (dn *DirectoryNode) image() []ImageNode {
+func (dn *TraverseNode) image() []ImageNode {
 	var images = make([]ImageNode, 0, 16)
 	dn.ScanImages(&images)
 	return images
 }
 
-func (dn *DirectoryNode) album() []DirNode {
+func (dn *TraverseNode) album() []DirNode {
 	var albums = make([]DirNode, 0, 16)
 	dn.ScanAlbum(&albums)
 	return albums
 }
 
-func (dn *DirectoryNode) Random(flatten bool) (NodeWithParent, error) {
+func (dn *TraverseNode) Random(flatten bool) (NodeWithParent, error) {
 	if flatten {
 		totalChoice := len(dn.Images) + len(dn.Directories)
 		if totalChoice == 0 {
@@ -102,7 +130,7 @@ func (dn *DirectoryNode) Random(flatten bool) (NodeWithParent, error) {
 	}
 }
 
-func (dn *DirectoryNode) toTree() map[string]interface{} {
+func (dn *TraverseNode) toTree() map[string]interface{} {
 	m := make(map[string]interface{})
 	if dn.HasSudDirectories() {
 		for _, node := range dn.Directories {
@@ -114,12 +142,14 @@ func (dn *DirectoryNode) toTree() map[string]interface{} {
 	return m
 }
 
-func (dn *DirectoryNode) ScanAlbum(result *[]DirNode) {
+func (dn *TraverseNode) ScanAlbum(result *[]DirNode) {
 	for _, sub := range dn.Directories {
 		if sub.HasImages() {
 			*result = append(*result, DirNode{
-				Name:  sub.Name,
-				Path:  sub.Path,
+				Node: Node{
+					Name: sub.Name,
+					Path: sub.Path,
+				},
 				Cover: sub.Cover(),
 			})
 		}
@@ -127,18 +157,18 @@ func (dn *DirectoryNode) ScanAlbum(result *[]DirNode) {
 	}
 }
 
-func (dn *DirectoryNode) ScanImages(result *[]ImageNode) {
+func (dn *TraverseNode) ScanImages(result *[]ImageNode) {
 	*result = utils.AppendAll(*result, dn.Images)
 	for _, sub := range dn.Directories {
 		sub.ScanImages(result)
 	}
 }
 
-func (dn *DirectoryNode) HasImages() bool {
+func (dn *TraverseNode) HasImages() bool {
 	return dn.Images != nil && len(dn.Images) > 0
 }
 
-func (dn *DirectoryNode) Cover() ImageNode {
+func (dn *TraverseNode) Cover() ImageNode {
 	if dn.HasImages() {
 		return dn.Images[dn.CoverIndex]
 	}
@@ -153,11 +183,11 @@ func (dn *DirectoryNode) Cover() ImageNode {
 	return EmptyNode
 }
 
-func (dn *DirectoryNode) HasSudDirectories() bool {
+func (dn *TraverseNode) HasSudDirectories() bool {
 	return dn.Directories != nil && len(dn.Directories) > 0
 }
 
-func (dn *DirectoryNode) Locate(path string) *DirectoryNode {
+func (dn *TraverseNode) Locate(path string) *TraverseNode {
 	paths := strings.Split(path, "/")
 	p := dn
 	for _, s := range paths {
@@ -166,7 +196,7 @@ func (dn *DirectoryNode) Locate(path string) *DirectoryNode {
 	return p
 }
 
-func (dn *DirectoryNode) OpenOrCreate(name string) *DirectoryNode {
+func (dn *TraverseNode) OpenOrCreate(name string) *TraverseNode {
 	if name == "" {
 		return dn
 	}
@@ -174,14 +204,14 @@ func (dn *DirectoryNode) OpenOrCreate(name string) *DirectoryNode {
 	if exist {
 		return node
 	} else {
-		newNode := DirectoryNode{
+		newNode := TraverseNode{
 			Node: Node{
 				Name: name,
 				Path: path.Join(dn.Path, name),
 			},
 			Images:      make([]ImageNode, 0),
 			Others:      make([]Node, 0),
-			Directories: make(map[string]*DirectoryNode),
+			Directories: make(map[string]*TraverseNode),
 		}
 		dn.Directories[name] = &newNode
 		return &newNode

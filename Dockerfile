@@ -6,7 +6,7 @@ COPY web/ ./
 RUN npm run build
 
 #production stage
-FROM docker.test4x.com/xgfan/saio-builder:20240411 AS go-builder
+FROM docker.test4x.com/xgfan/saio-builder:20250320 AS go-builder
 WORKDIR /app
 
 COPY go.mod go.sum ./

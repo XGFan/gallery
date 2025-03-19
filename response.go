@@ -1,20 +1,23 @@
 package gallery
 
-type SimpleDirectory struct {
-	Images      []ImageNode `json:"images,omitempty"`
-	Others      []Node      `json:"others,omitempty"`
-	Directories []DirNode   `json:"directories,omitempty"`
+type Node struct {
+	//名称
+	Name string `json:"name,omitempty"`
+	//路径
+	Path string `json:"path,omitempty"`
+}
+
+type Size struct {
+	//宽
+	Width int `json:"width,omitempty"`
+	//长
+	Height int `json:"height,omitempty"`
 }
 
 type DirNode struct {
-	Name  string    `json:"name,omitempty"`
-	Path  string    `json:"path,omitempty"`
+	Node
+	//封面
 	Cover ImageNode `json:"cover,omitempty"`
-}
-
-type Node struct {
-	Name string `json:"name,omitempty"`
-	Path string `json:"path,omitempty"`
 }
 
 type ImageNode struct {
@@ -22,9 +25,10 @@ type ImageNode struct {
 	Size
 }
 
-type Size struct {
-	Width  int `json:"width,omitempty"`
-	Height int `json:"height,omitempty"`
+type SimpleDirectory struct {
+	Images      []ImageNode `json:"images,omitempty"`
+	Others      []Node      `json:"others,omitempty"`
+	Directories []DirNode   `json:"directories,omitempty"`
 }
 
 type NodeWithParent struct {

@@ -105,7 +105,7 @@ func Init(s *gin.Engine, conf config.GalleryConfig) {
 	ctx, _ := context.WithCancel(context.Background())
 	originFs := storage.NewFs(conf.Resource.Base)
 	cacheFs := storage.NewFs(conf.Cache)
-	collector := NewCollector(originFs, cacheFs, conf.Resource.Exclude, ctx)
+	collector := NewCollector(originFs, cacheFs, conf.Resource.Exclude, conf.Resource.VirtualPath, ctx)
 	imageResolver := NewStaticImageResolver(originFs, cacheFs, conf.Resource.ForceThumbnail, ctx)
 	//warmup
 	go collector.warmUp()
@@ -186,19 +186,22 @@ type Collector struct {
 	OriginFs      storage.Storage
 	CacheFs       storage.Storage
 	Exclude       utils.Set[string]
-	Data          *DirectoryNode
+	Data          *TraverseNode
+	VirtualPath   map[string][]string
 	lastScan      int64
 	sizeCache     map[string]Size
 	rescanTrigger chan struct{}
 }
 
 func NewCollector(originFs storage.Storage, cacheFs storage.Storage,
-	exclude []string, ctx context.Context) *Collector {
+	exclude []string, virtualPath map[string][]string, ctx context.Context) *Collector {
 	v := &Collector{
 		OriginFs:      originFs,
 		CacheFs:       cacheFs,
 		Exclude:       utils.NewSetWithSlice(exclude),
 		lastScan:      0,
+		Data:          &TraverseNode{},
+		VirtualPath:   virtualPath,
 		rescanTrigger: make(chan struct{}, 10),
 	}
 	go v.ScanWorker(ctx)
@@ -227,17 +230,27 @@ func (v *Collector) ScanWorker(ctx context.Context) {
 			log.Printf("Scan Image finished: %s", time.Now().Sub(start).Truncate(time.Millisecond))
 			v.ScanImgSize()
 			log.Printf("Scan Size finished: %s", time.Now().Sub(start).Truncate(time.Millisecond))
+			v.merge()
 		}
 	}
 }
 
+func (v *Collector) merge() {
+	if v.VirtualPath == nil {
+		return
+	}
+	for name, paths := range v.VirtualPath {
+		nodes := make([]TraverseNode, 0, len(paths))
+		for _, path := range paths {
+			nodes = append(nodes, *v.Data.Locate(path))
+		}
+		virtualPath := MergeVirtualPath(name, nodes)
+		v.Data.Directories[name] = &virtualPath
+	}
+}
+
 func (v *Collector) warmUp() {
-	start := time.Now()
-	log.Println("Warmup Start")
-	v.Scan()
-	log.Printf("Warmup Image Finished: %s", time.Now().Sub(start).Truncate(time.Millisecond))
-	v.ScanImgSize()
-	log.Printf("Warmup Size Finished: %s", time.Now().Sub(start).Truncate(time.Millisecond))
+	v.rescanTrigger <- struct{}{}
 }
 
 func (v *Collector) Scan() {
@@ -254,11 +267,11 @@ func (v *Collector) Scan() {
 		close(task.In)
 		close(result)
 	}()
-	node := &DirectoryNode{
+	node := &TraverseNode{
 		Node:        Node{},
 		Images:      make([]ImageNode, 0),
 		Others:      make([]Node, 0),
-		Directories: make(map[string]*DirectoryNode),
+		Directories: make(map[string]*TraverseNode),
 	}
 	for info := range result {
 		located := node.Locate(info.Path)
@@ -293,7 +306,7 @@ func (v *Collector) ScanImgSize() {
 
 }
 
-func collectImgSize(fs storage.Storage, dn *DirectoryNode) {
+func collectImgSize(fs storage.Storage, dn *TraverseNode) {
 	for i := range dn.Images {
 		if dn.Images[i].Size != EmptySize {
 			continue
