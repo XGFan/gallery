@@ -1,10 +1,11 @@
 package config
 
 import (
-	"github.com/XGFan/go-utils"
 	"log"
 	"path"
 	"path/filepath"
+
+	"github.com/XGFan/go-utils"
 )
 
 type Setup interface {
@@ -23,6 +24,7 @@ type ResourceConfig struct {
 	Exclude        []string            `yaml:"exclude"`
 	ForceThumbnail []string            `yaml:"force_thumbnail"`
 	VirtualPath    map[string][]string `yaml:"virtual_path"`
+	TagBlacklist   []string            `yaml:"tag_blacklist"`
 }
 
 func (g *GalleryConfig) Setup() {

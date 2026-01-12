@@ -1,0 +1,313 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Image gallery service with folder browsing, album management and tagging support.",
+        "title": "Gallery API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "basePath": "/",
+    "paths": {
+        "/api/album/{name}": {
+            "get": {
+                "description": "Returns all album directories (directories containing images) recursively",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "albums"
+                ],
+                "summary": "List all albums under a directory",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Directory path",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/core.DirNode"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/explore/{name}": {
+            "get": {
+                "description": "Returns immediate contents of a directory (subdirectories, images, others)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "browse"
+                ],
+                "summary": "Explore a directory",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Directory path",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/core.SimpleDirectory"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/image/{name}": {
+            "get": {
+                "description": "Returns all images recursively under the specified directory",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "images"
+                ],
+                "summary": "List all images under a directory",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Directory path",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/core.ImageNode"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/random/{name}": {
+            "get": {
+                "description": "Returns a random image from the specified directory",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "images"
+                ],
+                "summary": "Get a random image",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Directory path",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Flatten search into subdirectories (default: true)",
+                        "name": "flat",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/core.NodeWithParent"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tag": {
+            "get": {
+                "description": "Returns tag statistics across all images",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tags"
+                ],
+                "summary": "Get all tags",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/core.TagStat"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tree": {
+            "get": {
+                "description": "Returns the directory tree structure",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "browse"
+                ],
+                "summary": "Get folder tree",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Include leaf nodes (default: true)",
+                        "name": "leaf",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "core.DirNode": {
+            "type": "object",
+            "properties": {
+                "cover": {
+                    "$ref": "#/definitions/core.ImageNode"
+                },
+                "directories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.Node"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "core.ImageNode": {
+            "type": "object",
+            "properties": {
+                "caption": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.TagInfo"
+                    }
+                },
+                "width": {
+                    "type": "integer"
+                }
+            }
+        },
+        "core.Node": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "core.NodeWithParent": {
+            "type": "object",
+            "properties": {
+                "node": {
+                    "$ref": "#/definitions/core.ImageNode"
+                },
+                "parent": {
+                    "type": "string"
+                }
+            }
+        },
+        "core.SimpleDirectory": {
+            "type": "object",
+            "properties": {
+                "directories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.DirNode"
+                    }
+                },
+                "images": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.ImageNode"
+                    }
+                },
+                "others": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.Node"
+                    }
+                }
+            }
+        },
+        "core.TagInfo": {
+            "type": "object",
+            "properties": {
+                "tag": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "integer"
+                }
+            }
+        },
+        "core.TagStat": {
+            "type": "object",
+            "properties": {
+                "avgScore": {
+                    "type": "number"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "tag": {
+                    "type": "string"
+                },
+                "weight": {
+                    "type": "number"
+                }
+            }
+        }
+    }
+}

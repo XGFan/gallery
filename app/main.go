@@ -4,14 +4,15 @@ import (
 	"fmt"
 	"gallery"
 	"gallery/config"
-	"github.com/XGFan/go-utils"
-	"github.com/gin-gonic/gin"
-	"gopkg.in/yaml.v3"
 	"log"
 	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"runtime"
+
+	"github.com/XGFan/go-utils"
+	"github.com/gin-gonic/gin"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -34,6 +35,13 @@ func main() {
 	engine := gin.Default()
 	engine.Use(func(context *gin.Context) {
 		context.Writer.Header().Set("Server", "SAIO")
+		context.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		context.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		context.Writer.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type")
+		if context.Request.Method == "OPTIONS" {
+			context.AbortWithStatus(204)
+			return
+		}
 	})
 	gallery.Init(engine, *conf)
 	openBrowser(fmt.Sprintf("http://localhost:%d/", conf.Port))
