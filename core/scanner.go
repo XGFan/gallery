@@ -175,10 +175,14 @@ func (s *Scanner) scanDir(node Node, out chan<- ScanItem, wg *sync.WaitGroup, ta
 
 		target := Node{Name: info.Name(), Path: targetPath}
 
+		if !storage.IsNormalFile(info.Name()) {
+			continue
+		}
+
 		if info.IsDir() {
 			wg.Add(1)
 			task.In <- target
-		} else if storage.IsNormalFile(info.Name()) {
+		} else {
 			if storage.IsValidPic(info.Name()) {
 				out <- ScanItem{Type: ItemImage, Path: targetPath, Name: info.Name()}
 			} else {
