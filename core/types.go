@@ -85,7 +85,7 @@ type DirNode struct {
 
 // NodeWithParent holds a node with its parent path
 type NodeWithParent struct {
-	Node   ImageNode
+	ImageNode
 	Parent string `json:"parent"`
 }
 
@@ -416,8 +416,8 @@ func (dn *TraverseNode) Random(flatten bool) (NodeWithParent, error) {
 		index := rand.Intn(totalChoice)
 		if index < len(dn.Images) {
 			return NodeWithParent{
-				Node:   dn.Images[index],
-				Parent: dn.Path,
+				ImageNode: dn.Images[index],
+				Parent:    dn.Path,
 			}, nil
 		} else {
 			restIndex := index - len(dn.Images)
@@ -437,8 +437,8 @@ func (dn *TraverseNode) Random(flatten bool) (NodeWithParent, error) {
 		}
 		index := rand.Intn(len(dn.Images))
 		return NodeWithParent{
-			Node:   dn.Images[index],
-			Parent: dn.Path,
+			ImageNode: dn.Images[index],
+			Parent:    dn.Path,
 		}, nil
 	}
 }
