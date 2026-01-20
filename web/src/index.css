@@ -58,3 +58,28 @@ body {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
+
+.topbar-safe {
+  top: calc(env(safe-area-inset-top, 0px) + 1rem);
+}
+
+.topbar-safe.topbar-hidden {
+  transform: translateY(calc(-6rem - env(safe-area-inset-top, 0px)));
+}
+
+@supports (padding: env(safe-area-inset-top)) {
+  body::before {
+    content: '';
+    z-index: 2;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    mask: linear-gradient(to bottom, black, black 50%, rgba(0, 0, 0, 0.7) 75%, rgba(0, 0, 0, 0) 100%);
+    -webkit-mask: linear-gradient(to bottom, black, black 50%, rgba(0, 0, 0, 0.7) 75%, rgba(0, 0, 0, 0) 100%);
+    pointer-events: none;
+  }
+}

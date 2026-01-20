@@ -250,10 +250,12 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
     };
 
     return (
-        <header className={clsx(
-            "absolute top-4 left-0 right-0 h-12 flex items-center justify-between gap-4 px-4 md:px-6 z-30 pointer-events-none transition-transform duration-300",
-            !isVisible && "-translate-y-24"
-        )}>
+        <header
+            className={clsx(
+                "fixed left-0 right-0 h-12 flex items-center justify-between gap-4 px-4 md:px-6 z-30 pointer-events-none transition-transform duration-300 topbar-safe",
+                !isVisible && "topbar-hidden"
+            )}
+        >
             {/* Left Island: Breadcrumbs */}
             <div
                 ref={breadcrumbRef}
