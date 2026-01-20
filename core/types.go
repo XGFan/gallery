@@ -85,8 +85,8 @@ type DirNode struct {
 
 // NodeWithParent holds a node with its parent path
 type NodeWithParent struct {
-	Node   ImageNode `json:"node"`
-	Parent string    `json:"parent"`
+	Node   ImageNode
+	Parent string `json:"parent"`
 }
 
 // TraverseNode represents a directory with all its contents

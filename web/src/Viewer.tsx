@@ -114,9 +114,6 @@ export default function Viewer() {
         buttonZoom: () => null,
       }}
       on={{
-        entering: album.mode === 'random' ? () => {
-          document.documentElement.requestFullscreen?.().catch(() => { });
-        } : undefined,
         exiting: album.mode !== 'random' ? undefined : function () {
           if (document.fullscreenElement) {
             document.exitFullscreen?.().catch(() => { });
@@ -176,11 +173,13 @@ export default function Viewer() {
         gap={4}
       />
     </InfiniteScroll>
-    <div className={`fixed-widgets-rb fixed bottom-4 right-4 z-50 transition-opacity duration-300 ${showCounter ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+    {/* Bottom center counter */}
+    <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 transition-opacity duration-300 ${showCounter ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
       <div className="px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-white/80 text-sm shadow-lg">
         {album.images.length} / {fullAlbum.images.length}
       </div>
     </div>
+    {/* Bottom right shuffle button - Removed, merged into TopBar */}
     <Modal
       onClose={() => setShowConfig(false)}
       isOpen={showConfig}

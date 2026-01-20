@@ -1,19 +1,19 @@
 import { useNavigate, useLoaderData } from "react-router-dom";
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { ChevronRight, Home, LayoutGrid, Image as ImageIcon, Compass, Shuffle, HardDrive } from "lucide-react";
+import { ChevronRight, Home, LayoutGrid, Image as ImageIcon, Compass, HardDrive, Shuffle } from "lucide-react";
 import { Album, AppCtx, Mode } from "../dto";
 import clsx from "clsx";
-
-interface TopBarProps {
-    onSidebarToggle?: () => void;
-    isSidebarOpen?: boolean;
-}
 
 // Constants for layout calculations
 const MARGIN_MOBILE = 16; // px-4
 const MARGIN_DESKTOP = 24; // px-6
 const SWITCHER_WIDTH = 56; // w-14
 const SWITCHER_GAP = 16; // gap between breadcrumb and switcher
+
+interface TopBarProps {
+    onSidebarToggle?: () => void;
+    isSidebarOpen?: boolean;
+}
 
 export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) {
     const { data: album } = useLoaderData() as AppCtx<Album>;
@@ -23,6 +23,8 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
     const [shouldHideSwitcher, setShouldHideSwitcher] = useState(false);
     const [visibleSegmentCount, setVisibleSegmentCount] = useState<number | null>(null); // null = show all
     const [canHover, setCanHover] = useState(true); // Whether device supports hover
+    const [isVisible, setIsVisible] = useState(true); // Scroll-aware visibility
+    const lastScrollY = useRef(0);
     const breadcrumbRef = useRef<HTMLDivElement>(null);
     const segmentRefs = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -30,9 +32,9 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
     const currentPath = album.path.path;
     const currentMode = album.mode;
 
-    // Breadcrumb Logic
+    // Breadcrumb Logic - Home item has empty name to show only icon
     const breadcrumbs = useMemo(() => [
-        { name: "Home", path: "", icon: <Home className="w-4 h-4" /> },
+        { name: "", path: "", icon: <Home className="w-5 h-5" /> },
         ...parents.reverse().filter(p => p.name).map(p => ({ name: p.name, path: p.path, icon: null })),
         ...(album.path.name ? [{ name: album.path.name, path: album.path.path, icon: null }] : [])
     ], [parents, album.path.name, album.path.path]);
@@ -64,6 +66,29 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
             changeMode('image');
         }
     }, [isLeaf, currentMode, changeMode]);
+
+    // Scroll awareness
+    useEffect(() => {
+        const container = document.getElementById('main-scroll-container');
+        if (!container) return;
+
+        const handleScroll = () => {
+            const currentScrollY = container.scrollTop;
+
+            // Show when at top or scrolling up
+            if (currentScrollY < 10 || currentScrollY < lastScrollY.current) {
+                setIsVisible(true);
+            } else if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
+                // Hide when scrolling down and past threshold
+                setIsVisible(false);
+            }
+
+            lastScrollY.current = currentScrollY;
+        };
+
+        container.addEventListener('scroll', handleScroll, { passive: true });
+        return () => container.removeEventListener('scroll', handleScroll);
+    }, []);
 
     // Detect hover capability using matchMedia
     useEffect(() => {
@@ -225,43 +250,50 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
     };
 
     return (
-        <header className="absolute top-4 md:top-6 left-0 right-0 h-16 flex items-center justify-between gap-4 px-4 md:px-6 z-30 pointer-events-none">
+        <header className={clsx(
+            "absolute top-4 left-0 right-0 h-12 flex items-center justify-between gap-4 px-4 md:px-6 z-30 pointer-events-none transition-transform duration-300",
+            !isVisible && "-translate-y-24"
+        )}>
             {/* Left Island: Breadcrumbs */}
             <div
                 ref={breadcrumbRef}
                 className={clsx(
-                    "flex items-center bg-glass-liquid backdrop-blur-lg border border-white/20 rounded-full h-14 shadow-[0_4px_16px_rgba(0,0,0,0.2)] ring-1 ring-white/10 pointer-events-auto transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden translate-z-0 will-change-transform",
+                    "flex items-center bg-glass-liquid backdrop-blur-lg border border-white/20 rounded-full h-12 shadow-[0_4px_16px_rgba(0,0,0,0.2)] ring-1 ring-white/10 pointer-events-auto transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden translate-z-0 will-change-transform",
                     isBreadcrumbExpanded
                         ? "px-4 md:px-6 w-auto max-w-[calc(100vw-2rem)] md:max-w-[calc(100vw-3rem)]"
-                        : "px-5 max-w-[240px] md:max-w-[480px] lg:max-w-[720px] xl:max-w-[1000px]"
+                        : "px-4 max-w-[240px] md:max-w-[480px] lg:max-w-[720px] xl:max-w-[1000px]",
+                    // Hide breadcrumb when switcher is expanded
+                    isSwitcherExpanded && "opacity-0 pointer-events-none -translate-x-10 scale-95 !w-0 p-0 border-0"
                 )}
-                onMouseEnter={() => canHover && setBreadcrumbExpanded(true)}
+
+                onMouseEnter={() => canHover && !isSwitcherExpanded && breadcrumbs.length > 1 && setBreadcrumbExpanded(true)}
                 onMouseLeave={() => canHover && setBreadcrumbExpanded(false)}
                 onClick={handleBreadcrumbClick}
             >
-                {/* Sidebar Toggle Button - appears on hover */}
-                {onSidebarToggle && (
-                    <div className={clsx(
-                        "flex items-center transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] overflow-hidden",
-                        isBreadcrumbExpanded ? "w-auto opacity-100" : "w-0 opacity-0"
-                    )}>
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onSidebarToggle();
-                            }}
-                            className="flex items-center justify-center w-9 h-9 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all duration-300 shrink-0"
-                            aria-label={isSidebarOpen ? "Close Sidebar" : "Open Sidebar"}
-                        >
-                            <HardDrive className="w-5 h-5" strokeWidth={1.5} />
-                        </button>
-                        {/* Divider */}
-                        <div className="w-px h-6 bg-white/20 mx-2 shrink-0" />
-                    </div>
-                )}
 
                 {/* Breadcrumbs */}
-                <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-sm font-medium text-white/80 overflow-hidden px-1 whitespace-nowrap min-w-0">
+                <nav aria-label="Breadcrumb" className={clsx(
+                    "flex items-center gap-1 text-sm font-medium text-white/80 overflow-hidden whitespace-nowrap min-w-0",
+                    // Only add right padding when expanded or has multiple breadcrumbs
+                    (isBreadcrumbExpanded || breadcrumbs.length > 1) && "pr-2"
+                )}>
+                    {/* Sidebar Toggle - Always visible */}
+                    {onSidebarToggle && (
+                        <>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSidebarToggle();
+                                }}
+                                className="flex items-center justify-center w-9 h-9 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all duration-300 shrink-0 ml-1"
+                                aria-label={isSidebarOpen ? "Close Sidebar" : "Open Sidebar"}
+                            >
+                                <HardDrive className="w-5 h-5" strokeWidth={1.5} />
+                            </button>
+                            {/* Divider */}
+                            <div className="w-px h-5 bg-white/20 mx-1 shrink-0" />
+                        </>
+                    )}
                     {(() => {
                         // Collapsed: Show Home (if root) or "Home > ... > Current"
                         if (!isBreadcrumbExpanded && breadcrumbs.length > 2) {
@@ -271,8 +303,7 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                             if (isHome) return (
                                 <div className="flex items-center">
                                     <button className="flex items-center gap-1 px-2 py-1 rounded-md text-white cursor-default font-semibold">
-                                        <Home className="w-4 h-4" />
-                                        <span>Home</span>
+                                        <Home className="w-5 h-5" />
                                     </button>
                                 </div>
                             );
@@ -281,7 +312,7 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                                 <>
                                     <div className="flex items-center">
                                         <button onClick={(e) => { e.stopPropagation(); navigate(`/?mode=album`); }} className="flex items-center gap-1 px-1 py-1 rounded-md text-white/50 hover:text-white">
-                                            <Home className="w-4 h-4" />
+                                            <Home className="w-5 h-5" />
                                         </button>
                                         <ChevronRight className="w-3.5 h-3.5 text-white/20 mx-0.5" />
                                     </div>
@@ -338,13 +369,17 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                                             if (!isLast) navigate(`/${item.path}?mode=album`);
                                         }}
                                         className={clsx(
-                                            "flex items-center gap-1 px-2 py-1 rounded-md transition-colors hover:bg-white/10 min-w-0",
+                                            "flex items-center transition-colors min-w-0",
+                                            // Home icon button: circular like sidebar button
+                                            item.icon && !item.name
+                                                ? "justify-center w-9 h-9 rounded-full hover:bg-white/10"
+                                                : "gap-1 px-2 py-1 rounded-md hover:bg-white/10",
                                             isLast ? "text-white cursor-default font-semibold overflow-hidden" : "text-white/60 hover:text-white"
                                         )}
                                         disabled={isLast}
                                     >
                                         {item.icon}
-                                        <span className="truncate">{item.name}</span>
+                                        {item.name && <span className="truncate">{item.name}</span>}
                                     </button>
                                     {!isLast && <ChevronRight className="w-3.5 h-3.5 text-white/20 mx-0.5 shrink-0" />}
                                 </div>
@@ -357,12 +392,16 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
             {/* Right Island: View Switcher - Collapsible */}
             <div
                 className={clsx(
-                    "flex bg-glass-liquid backdrop-blur-lg border border-white/20 rounded-full h-14 w-14 items-center shadow-[0_4px_16px_rgba(0,0,0,0.2)] ring-1 ring-white/10 pointer-events-auto transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden translate-z-0 will-change-transform shrink-0",
-                    isSwitcherExpanded ? "px-2 !w-auto" : "px-0 justify-center cursor-pointer hover:bg-white/10 hover:shadow-glow",
-                    shouldHideSwitcher && "opacity-0 pointer-events-none translate-x-10 scale-95 !w-0 p-0 border-0"
+                    "flex bg-glass-liquid backdrop-blur-lg border border-white/20 h-12 w-12 items-center shadow-[0_4px_16px_rgba(0,0,0,0.2)] ring-1 ring-white/10 pointer-events-auto transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden translate-z-0 will-change-transform shrink-0 rounded-3xl",
+                    isSwitcherExpanded
+                        ? "px-1 py-1 md:px-2 md:py-0 !w-auto flex-col md:flex-row h-auto md:h-12 items-stretch md:items-center self-start"
+                        : "px-0 justify-center cursor-pointer hover:bg-white/10 hover:shadow-glow",
+                    // Hide switcher when: breadcrumb expanded, should be hidden, or only one mode available
+                    (shouldHideSwitcher || isBreadcrumbExpanded || availableModes.length <= 1) && "opacity-0 pointer-events-none translate-x-10 scale-95 !w-0 p-0 border-0"
                 )}
-                onClick={() => !isSwitcherExpanded && setSwitcherExpanded(true)}
-                onMouseLeave={() => setSwitcherExpanded(false)}
+                onMouseEnter={() => canHover && !isBreadcrumbExpanded && setSwitcherExpanded(true)}
+                onMouseLeave={() => canHover && setSwitcherExpanded(false)}
+                onClick={() => !canHover && !isSwitcherExpanded && !isBreadcrumbExpanded && setSwitcherExpanded(true)}
             >
                 {availableModes.map((mode) => {
                     if (!isSwitcherExpanded && currentMode !== mode.id) return null;
@@ -373,7 +412,9 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                             onClick={(e) => {
                                 e.stopPropagation();
                                 if (isSwitcherExpanded) {
-                                    changeMode(mode.id as Mode);
+                                    if (currentMode !== mode.id) {
+                                        changeMode(mode.id as Mode);
+                                    }
                                     setSwitcherExpanded(false);
                                 } else {
                                     setSwitcherExpanded(true);
@@ -382,7 +423,7 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                             className={clsx(
                                 "flex items-center gap-2 rounded-full text-xs font-medium transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] whitespace-nowrap",
                                 isSwitcherExpanded
-                                    ? "px-5 py-2"
+                                    ? "px-4 py-3 md:px-5 md:py-2 w-full md:w-auto justify-start md:justify-center"
                                     : "w-full h-full justify-center p-0",
                                 currentMode === mode.id && isSwitcherExpanded
                                     ? "bg-white/10 text-white shadow-inner border border-white/10 backdrop-blur-md"
@@ -390,15 +431,12 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                                 !isSwitcherExpanded && "text-white"
                             )}
                         >
-                            <mode.icon className={clsx(
-                                "transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]",
-                                isSwitcherExpanded ? "w-5 h-5" : "w-6 h-6"
-                            )} strokeWidth={2} />
+                            <mode.icon className="w-5 h-5" strokeWidth={2} />
                             {isSwitcherExpanded && <span>{mode.label}</span>}
                         </button>
                     );
                 })}
             </div>
-        </header>
+        </header >
     );
 }

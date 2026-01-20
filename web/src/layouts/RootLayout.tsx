@@ -41,8 +41,6 @@ export default function RootLayout({ children }: RootLayoutProps) {
                     {children}
                 </div>
             </main>
-
-            {/* Mobile Drawer Overlay could go here if we implemented responsive drawer in RootLayout */}
         </div>
     );
 }
