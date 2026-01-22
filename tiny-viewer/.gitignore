@@ -1,0 +1,14 @@
+# Xcode
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Secrets
+.netrc
+
+# Distribution
+dist/
