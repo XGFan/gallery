@@ -1,12 +1,13 @@
 import clsx from "clsx";
 import FileTree from "../FileTree";
-import { Library } from "lucide-react";
+import { Library, Settings } from "lucide-react";
 
 interface SidebarProps {
     className?: string;
+    onOpenShuffleSettings?: () => void;
 }
 
-export default function NavigationSidebar({ className }: SidebarProps) {
+export default function NavigationSidebar({ className, onOpenShuffleSettings }: SidebarProps) {
     return (
         <aside
             className={clsx(
@@ -34,8 +35,16 @@ export default function NavigationSidebar({ className }: SidebarProps) {
                 </div>
             </div>
 
-            <div className="p-6 border-t border-white/10 text-[10px] tracking-[0.25em] font-bold text-center text-white/40 uppercase select-none relative z-10 drop-shadow-sm">
-                Gallery Joy
+            <div className="p-6 border-t border-white/10 text-[10px] tracking-[0.25em] font-bold text-white/40 uppercase select-none relative z-10 drop-shadow-sm flex items-center justify-center gap-3">
+                <button
+                    onClick={onOpenShuffleSettings}
+                    className="flex items-center justify-center w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all duration-300"
+                    aria-label="Shuffle Settings"
+                    type="button"
+                >
+                    <Settings className="w-3.5 h-3.5" strokeWidth={2} />
+                </button>
+                <span className="text-center">Gallery Joy</span>
             </div>
         </aside>
     );

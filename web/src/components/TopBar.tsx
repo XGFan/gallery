@@ -3,6 +3,7 @@ import {useState, useMemo, useEffect, useRef, useCallback, ReactNode} from "reac
 import { ChevronRight, Home, LayoutGrid, Image as ImageIcon, Compass, HardDrive, Shuffle } from "lucide-react";
 import { Album, AppCtx, Mode } from "../dto";
 import clsx from "clsx";
+import { getShuffleOpenMode } from "../utils";
 
 // Constants for layout calculations
 const MARGIN_MOBILE = 16; // px-4
@@ -42,37 +43,12 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
     // Helper to change mode while keeping current path
     const changeMode = useCallback((newMode: Mode) => {
         if (newMode === 'random') {
-            const tinyViewerUrl = `tinyviewer://${currentPath || ''}`;
-            // Try to open using iframe to avoid blocking error on some browsers
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = tinyViewerUrl;
-            document.body.appendChild(iframe);
-            setTimeout(() => {
-                document.body.removeChild(iframe);
-            }, 1000);
-
-            // Heuristic to detect if app opened
-            let appOpened = false;
-
-            const handleBlur = () => { appOpened = true; };
-            const handleVisibilityChange = () => {
-                if (document.hidden) appOpened = true;
-            };
-
-            window.addEventListener('blur', handleBlur);
-            document.addEventListener('visibilitychange', handleVisibilityChange);
-
-            setTimeout(() => {
-                window.removeEventListener('blur', handleBlur);
-                document.removeEventListener('visibilitychange', handleVisibilityChange);
-
-                // If app didn't open (page still visible/focused), fallback to web
-                if (!appOpened && !document.hidden) {
-                    navigate(`${currentPath ? '/' + currentPath : '/'}?mode=${newMode}`);
-                }
-            }, 2000); // Increased to 2000ms to give app more time to take focus
-            return;
+            if (getShuffleOpenMode() === "app") {
+                const tinyViewerUrl = `tinyviewer://${currentPath || ''}`;
+                // Use direct navigation for the most reliable app handoff
+                window.location.href = tinyViewerUrl;
+                return;
+            }
         }
         navigate(`${currentPath ? '/' + currentPath : '/'}?mode=${newMode}`);
     }, [navigate, currentPath]);

@@ -1,6 +1,17 @@
 import type { ImgData, DirNode, ImageNode, SimpleDirectory, NodeWithParent } from './types'
 
 export const DEFAULT_PAGE_SIZE = 30
+export type ShuffleOpenMode = "web" | "app"
+const SHUFFLE_OPEN_MODE_KEY = "shuffle-open-mode"
+
+export function getShuffleOpenMode(): ShuffleOpenMode {
+  const value = localStorage.getItem(SHUFFLE_OPEN_MODE_KEY)
+  return value === "app" ? "app" : "web"
+}
+
+export function setShuffleOpenMode(mode: ShuffleOpenMode): void {
+  localStorage.setItem(SHUFFLE_OPEN_MODE_KEY, mode)
+}
 
 export function customEncodeURI(s: string): string {
   return s.split("/").map(it => encodeURIComponent(it)).join("/")
