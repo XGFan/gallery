@@ -49,8 +49,8 @@ export default function Viewer() {
     console.log("full album has changed", fullAlbum)
     document.getElementById('main-scroll-container')?.scrollTo(0, 0)
     if (fullAlbum.mode == "random") {
-      setAlbum(fullAlbum)
-      setIndex(1)
+      setAlbum(fullAlbum.subAlbum(0))
+      setIndex(0)
     } else {
       setAlbum(fullAlbum.subAlbum(DEFAULT_PAGE_SIZE))
     }

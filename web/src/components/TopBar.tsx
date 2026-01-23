@@ -41,6 +41,39 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
 
     // Helper to change mode while keeping current path
     const changeMode = useCallback((newMode: Mode) => {
+        if (newMode === 'random') {
+            const tinyViewerUrl = `tinyviewer://${currentPath || ''}`;
+            // Try to open using iframe to avoid blocking error on some browsers
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = tinyViewerUrl;
+            document.body.appendChild(iframe);
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+            }, 1000);
+
+            // Heuristic to detect if app opened
+            let appOpened = false;
+
+            const handleBlur = () => { appOpened = true; };
+            const handleVisibilityChange = () => {
+                if (document.hidden) appOpened = true;
+            };
+
+            window.addEventListener('blur', handleBlur);
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+
+            setTimeout(() => {
+                window.removeEventListener('blur', handleBlur);
+                document.removeEventListener('visibilitychange', handleVisibilityChange);
+
+                // If app didn't open (page still visible/focused), fallback to web
+                if (!appOpened && !document.hidden) {
+                    navigate(`${currentPath ? '/' + currentPath : '/'}?mode=${newMode}`);
+                }
+            }, 2000); // Increased to 2000ms to give app more time to take focus
+            return;
+        }
         navigate(`${currentPath ? '/' + currentPath : '/'}?mode=${newMode}`);
     }, [navigate, currentPath]);
 

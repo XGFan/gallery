@@ -19,30 +19,46 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var windowController: GalleryWindowController?
     var viewModel: GalleryViewModel?
     var eventMonitor: Any?
+    var hasHandledURL = false
     
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        let imageLoader = ImageLoader()
-        imageLoader.configureKingfisher()
-        
+    func applicationWillFinishLaunching(_ notification: Notification) {
         NSAppleEventManager.shared().setEventHandler(
             self,
             andSelector: #selector(handleURLEvent(_:withReply:)),
             forEventClass: AEEventClass(kInternetEventClass),
             andEventID: AEEventID(kAEGetURL)
         )
+    }
+    
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let imageLoader = ImageLoader()
+        imageLoader.configureKingfisher()
         
-        let category = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ""
+        setupKeyboardHandling()
+        
+        // If URL was already handled by handleURLEvent, don't load default
+        if !hasHandledURL {
+            let category = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ""
+            loadCategory(category)
+        }
+    }
+    
+    func loadCategory(_ category: String) {
         let baseURL = ProcessInfo.processInfo.environment["GALLERY_API_URL"] ?? "https://gallery.test4x.com"
         let config = ImageGalleryConfig(baseURL: baseURL, category: category)
         
         viewModel = GalleryViewModel(config: config)
-        windowController = GalleryWindowController()
         
-        setupKeyboardHandling()
+        if windowController == nil {
+            windowController = GalleryWindowController()
+        }
+        
         setupContentView()
-        
         windowController?.show()
-        windowController?.centerOnScreen()
+        
+        if !hasHandledURL { // Only center on initial launch
+            windowController?.centerOnScreen()
+        }
         
         Task {
             await viewModel?.loadImages()
@@ -53,42 +69,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc func handleURLEvent(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
-        guard let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
-              let url = URL(string: urlString) else { return }
+        hasHandledURL = true
+        guard let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue else { return }
         
-        let category = parseCategory(from: url)
-        let baseURL = ProcessInfo.processInfo.environment["GALLERY_API_URL"] ?? "https://gallery.test4x.com"
-        let config = ImageGalleryConfig(baseURL: baseURL, category: category)
-        
-        viewModel = GalleryViewModel(config: config)
-        setupContentView()
-        windowController?.show()
-        
-        Task {
-            await viewModel?.loadImages()
-        }
+        // Handle encoded URL strings
+        let category = parseCategory(from: urlString)
+        loadCategory(category)
     }
     
-    private func parseCategory(from url: URL) -> String {
-        var parts: [String] = []
-        
-        if let host = url.host, !host.isEmpty {
-            parts.append(host)
+    private func parseCategory(from urlString: String) -> String {
+        // Remove scheme if present
+        var path = urlString
+        if path.hasPrefix("tinyviewer://") {
+            path = String(path.dropFirst("tinyviewer://".count))
         }
         
-        let pathComponents = url.pathComponents.filter { $0 != "/" }
-        parts.append(contentsOf: pathComponents)
-        
-        if !parts.isEmpty {
-            return parts.joined(separator: "/")
+        // Decode URL components (handles %20, %E4%BD%A0 etc)
+        if let decoded = path.removingPercentEncoding {
+            path = decoded
         }
         
-        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-           let categoryParam = components.queryItems?.first(where: { $0.name == "category" })?.value {
-            return categoryParam
+        // Clean up path
+        // 1. Remove query parameters if present
+        if let queryIndex = path.firstIndex(of: "?") {
+            path = String(path[..<queryIndex])
         }
         
-        return ""
+        // 2. Remove leading/trailing slashes
+        path = path.trimmingCharacters(in: .init(charactersIn: "/"))
+        
+        // 3. Handle specific "open?category=" case
+        if urlString.contains("category=") {
+            if let components = URLComponents(string: urlString),
+               let queryItem = components.queryItems?.first(where: { $0.name == "category" }),
+               let value = queryItem.value {
+                return value
+            }
+        }
+        
+        return path
     }
     
     func setupContentView() {
