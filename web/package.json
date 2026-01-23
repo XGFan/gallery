@@ -16,7 +16,6 @@
     "install": "^0.13.0",
     "lucide-react": "^0.562.0",
     "npm": "^10.5.0",
-    "pulltorefreshjs": "^0.1.22",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-gallery-grid": "^0.1.7",
@@ -27,7 +26,6 @@
     "yet-another-react-lightbox": "^3.17.2"
   },
   "devDependencies": {
-    "@types/pulltorefreshjs": "^0.1.7",
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
     "@typescript-eslint/eslint-plugin": "^7.1.1",

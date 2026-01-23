@@ -4,8 +4,6 @@ import { createBrowserRouter, RouterProvider, useLocation } from "react-router-d
 import axios from "axios";
 import { Album, customEncodeURI, generatePath, Mode, resp2Image, shuffle } from "./dto";
 import RootLayout from "./layouts/RootLayout.tsx";
-import { useEffect } from "react";
-import PullToRefresh from "pulltorefreshjs";
 
 
 
@@ -41,20 +39,7 @@ const router = createBrowserRouter([
   ;
 
 function App() {
-  useEffect(() => {
-    PullToRefresh.init({
-      mainElement: '#main-scroll-container',
-      onRefresh() {
-        window.location.reload();
-      }
-    });
-    return () => {
-      PullToRefresh.destroyAll();
-    }
-  }, [])
-  return (
-    <RouterProvider router={router} />
-  )
+  return <RouterProvider router={router} />
 }
 
 export default App

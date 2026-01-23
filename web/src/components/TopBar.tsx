@@ -1,5 +1,5 @@
 import { useNavigate, useLoaderData } from "react-router-dom";
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import {useState, useMemo, useEffect, useRef, useCallback, ReactNode} from "react";
 import { ChevronRight, Home, LayoutGrid, Image as ImageIcon, Compass, HardDrive, Shuffle } from "lucide-react";
 import { Album, AppCtx, Mode } from "../dto";
 import clsx from "clsx";
@@ -102,11 +102,10 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
 
     // Scroll awareness
     useEffect(() => {
-        const container = document.getElementById('main-scroll-container');
-        if (!container) return;
+        const container = window;
 
         const handleScroll = () => {
-            const currentScrollY = container.scrollTop;
+            const currentScrollY = container.scrollY;
 
             // Show when at top or scrolling up
             if (currentScrollY < 10 || currentScrollY < lastScrollY.current) {
@@ -329,7 +328,7 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                             <div className="w-px h-5 bg-white/20 mx-1 shrink-0" />
                         </>
                     )}
-                    {(() => {
+                    {(():ReactNode => {
                         // Collapsed: Show Home (if root) or "Home > ... > Current"
                         if (!isBreadcrumbExpanded && breadcrumbs.length > 2) {
                             const current = breadcrumbs[breadcrumbs.length - 1];

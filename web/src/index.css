@@ -22,8 +22,7 @@ body {
   padding: 0;
   width: 100vw;
   height: 100vh;
-  overflow: hidden;
-  /* App-like feel, scroll inside containers */
+  overflow: auto;
 
   /* Deep, vibrant mesh gradient background */
   background-color: #0f172a;
@@ -64,7 +63,10 @@ body {
 }
 
 .topbar-safe.topbar-hidden {
-  transform: translateY(calc(-6rem - env(safe-area-inset-top, 0px)));
+  /* css 1 */
+  /*transform: translateY(calc(-8rem - env(safe-area-inset-top, 0px)));*/
+  /* css 2 */
+  top: calc(-8rem - env(safe-area-inset-top));
 }
 
 @supports (padding: env(safe-area-inset-top)) {

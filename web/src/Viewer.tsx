@@ -47,7 +47,7 @@ export default function Viewer() {
   }, [rowHeight])
   useEffect(() => {
     console.log("full album has changed", fullAlbum)
-    document.getElementById('main-scroll-container')?.scrollTo(0, 0)
+    window.scrollTo(0, 0)
     if (fullAlbum.mode == "random") {
       setAlbum(fullAlbum.subAlbum(0))
       setIndex(0)
@@ -59,8 +59,6 @@ export default function Viewer() {
   // Auto-hide counter after 3 seconds of no scrolling
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
-    const scrollContainer = document.getElementById('main-scroll-container');
-
     const handleScroll = () => {
       setShowCounter(true);
       clearTimeout(timer);
@@ -70,9 +68,9 @@ export default function Viewer() {
     // Show initially, then hide after 3 seconds
     timer = setTimeout(() => setShowCounter(false), 3000);
 
-    scrollContainer?.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll);
     return () => {
-      scrollContainer?.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('scroll', handleScroll);
       clearTimeout(timer);
     };
   }, [fullAlbum]);
@@ -128,7 +126,6 @@ export default function Viewer() {
     <InfiniteScroll dataLength={album.images.length}
       hasMore={fullAlbum.images.length > album.images.length}
       loader={<div className="text-white/50 text-center py-4">Loading more...</div>}
-      scrollableTarget="main-scroll-container"
       scrollThreshold={0.9}
       className="w-full"
       next={fetchNew}>
@@ -179,7 +176,6 @@ export default function Viewer() {
         {album.images.length} / {fullAlbum.images.length}
       </div>
     </div>
-    {/* Bottom right shuffle button - Removed, merged into TopBar */}
     <Modal
       onClose={() => setShowConfig(false)}
       isOpen={showConfig}

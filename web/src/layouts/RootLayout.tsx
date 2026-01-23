@@ -11,7 +11,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
     const [isSidebarOpen, setSidebarOpen] = useState(false);
 
     return (
-        <div className="flex w-full h-screen overflow-hidden text-white/90 font-sans selection:bg-accent selection:text-white">
+        <div className="flex w-full overflow-auto text-white/90 font-sans selection:bg-accent selection:text-white">
             {/* Sidebar Overlay Backdrop */}
             {isSidebarOpen && (
                 <div
@@ -36,10 +36,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
                     isSidebarOpen={isSidebarOpen}
                 />
 
-                {/* Scrollable Grid Area */}
-                <div id="main-scroll-container" className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar relative z-0 p-1">
-                    {children}
-                </div>
+                {children}
             </main>
         </div>
     );
