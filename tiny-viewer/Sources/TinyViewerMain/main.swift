@@ -24,6 +24,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let imageLoader = ImageLoader()
         imageLoader.configureKingfisher()
         
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleURLEvent(_:withReply:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
+        
         let category = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ""
         let baseURL = ProcessInfo.processInfo.environment["GALLERY_API_URL"] ?? "https://gallery.test4x.com"
         let config = ImageGalleryConfig(baseURL: baseURL, category: category)
@@ -43,6 +50,45 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 showErrorAndQuit()
             }
         }
+    }
+    
+    @objc func handleURLEvent(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+        guard let urlString = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
+              let url = URL(string: urlString) else { return }
+        
+        let category = parseCategory(from: url)
+        let baseURL = ProcessInfo.processInfo.environment["GALLERY_API_URL"] ?? "https://gallery.test4x.com"
+        let config = ImageGalleryConfig(baseURL: baseURL, category: category)
+        
+        viewModel = GalleryViewModel(config: config)
+        setupContentView()
+        windowController?.show()
+        
+        Task {
+            await viewModel?.loadImages()
+        }
+    }
+    
+    private func parseCategory(from url: URL) -> String {
+        var parts: [String] = []
+        
+        if let host = url.host, !host.isEmpty {
+            parts.append(host)
+        }
+        
+        let pathComponents = url.pathComponents.filter { $0 != "/" }
+        parts.append(contentsOf: pathComponents)
+        
+        if !parts.isEmpty {
+            return parts.joined(separator: "/")
+        }
+        
+        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let categoryParam = components.queryItems?.first(where: { $0.name == "category" })?.value {
+            return categoryParam
+        }
+        
+        return ""
     }
     
     func setupContentView() {

@@ -101,6 +101,19 @@ Set `DEBUG=1` to enable detailed logging:
 DEBUG=1 swift run tiny-viewer Weibo
 ```
 
+### URL Scheme
+Open the app with a specific category via URL (requires the app to be run at least once to register):
+
+| URL | Result |
+|-----|--------|
+| `tinyviewer://` | Opens root gallery |
+| `tinyviewer://Weibo` | Opens Weibo category |
+| `tinyviewer://Weibo/SIREN` | Opens Weibo/SIREN subcategory |
+
+```bash
+open tinyviewer://Weibo
+```
+
 ---
 
 ## iOS Features
@@ -177,7 +190,7 @@ Custom app icon included in `Assets.xcassets/AppIcon.appiconset/`
 | Window resize | Yes | N/A (full-screen) |
 | Copy URL | C key | No |
 | Open in browser | J key | No |
-| Category selection | Command line arg | URL scheme |
+| Category selection | Command line arg / URL scheme | URL scheme |
 | Orientation | N/A | Portrait + Landscape |
 | Dismiss/Close | ESC/Q/Cmd+Q/Cmd+W | Swipe down |
 | Dock icon | No (accessory mode) | N/A |
