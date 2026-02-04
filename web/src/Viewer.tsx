@@ -11,6 +11,8 @@ import { useLoaderData, useNavigate } from "react-router-dom";
 import { Modal } from "./components/ui/Modal";
 import { Slider } from "./components/ui/Slider";
 import { GalleryItem } from "./components/GalleryItem";
+import VerticalPlayer from "./components/VerticalPlayer";
+import { buildSwipeSequence, getMixedMode } from "./utils";
 
 const DEFAULT_PLUGINS = [
   Fullscreen,
@@ -65,6 +67,14 @@ export default function Viewer() {
       return item;
     })
   }, [album.mode, fullAlbum.images, album.images]);
+
+  const verticalPlayerData = useMemo(() => {
+    if (album.mode === 'image' && index >= 0 && album.images[index]) {
+      const entryKey = album.images[index].key;
+      return buildSwipeSequence(album.images, entryKey, getMixedMode());
+    }
+    return null;
+  }, [album.mode, index, album.images]);
 
   useEffect(() => {
     localStorage.setItem("row-height", String(rowHeight));
@@ -123,10 +133,17 @@ export default function Viewer() {
 
 
   return <>
+    {verticalPlayerData && (
+      <VerticalPlayer
+        items={verticalPlayerData.sequence}
+        initialIndex={verticalPlayerData.initialIndex}
+        onClose={() => setIndex(-1)}
+      />
+    )}
     <Lightbox
       slides={slides}
       index={index}
-      open={index >= 0}
+      open={index >= 0 && !verticalPlayerData}
       close={() => setIndex(-1)}
       plugins={album.mode === 'random' ? RANDOM_PLUGINS : DEFAULT_PLUGINS}
       video={{ controls: true, playsInline: true, autoPlay: false }}
