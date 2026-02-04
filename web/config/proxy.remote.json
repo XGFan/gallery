@@ -1,0 +1,22 @@
+{
+  "/api": {
+    "target": "https://gallery.test4x.com/",
+    "changeOrigin": true
+  },
+  "/file": {
+    "target": "https://gallery.test4x.com/",
+    "changeOrigin": true
+  },
+  "/thumbnail": {
+    "target": "https://gallery.test4x.com/",
+    "changeOrigin": true
+  },
+  "/video": {
+    "target": "https://gallery.test4x.com/",
+    "changeOrigin": true
+  },
+  "/poster": {
+    "target": "https://gallery.test4x.com/",
+    "changeOrigin": true
+  }
+}
