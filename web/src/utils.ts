@@ -3,6 +3,7 @@ import type { ImgData, DirNode, ImageNode, SimpleDirectory, NodeWithParent, Vide
 export const DEFAULT_PAGE_SIZE = 30
 export type ShuffleOpenMode = "web" | "app"
 const SHUFFLE_OPEN_MODE_KEY = "shuffle-open-mode"
+const MIXED_MODE_KEY = "mixed-mode"
 
 export function getShuffleOpenMode(): ShuffleOpenMode {
   const value = localStorage.getItem(SHUFFLE_OPEN_MODE_KEY)
@@ -11,6 +12,15 @@ export function getShuffleOpenMode(): ShuffleOpenMode {
 
 export function setShuffleOpenMode(mode: ShuffleOpenMode): void {
   localStorage.setItem(SHUFFLE_OPEN_MODE_KEY, mode)
+}
+
+export function getMixedMode(): boolean {
+  const value = localStorage.getItem(MIXED_MODE_KEY)
+  return value === null ? true : value === "true"
+}
+
+export function setMixedMode(enabled: boolean): void {
+  localStorage.setItem(MIXED_MODE_KEY, String(enabled))
 }
 
 export function customEncodeURI(s: string): string {
@@ -158,4 +168,22 @@ export function shuffle<T>(array: T[]): T[] {
     [array[i], array[j]] = [array[j], array[i]];
   }
   return array;
+}
+
+export function buildSwipeSequence(data: ImgData[], entryKey: string, mixedMode: boolean): { sequence: ImgData[], initialIndex: number } {
+  const entryItem = data.find(it => it.key === entryKey)
+  if (!entryItem) {
+    return { sequence: data, initialIndex: 0 }
+  }
+
+  if (mixedMode) {
+    const index = data.findIndex(it => it.key === entryKey)
+    return { sequence: data, initialIndex: index === -1 ? 0 : index }
+  }
+
+  const type = entryItem.imageType
+  const filtered = data.filter(it => it.imageType === type)
+  const index = filtered.findIndex(it => it.key === entryKey)
+  
+  return { sequence: filtered, initialIndex: index === -1 ? 0 : index }
 }
