@@ -21,7 +21,9 @@
     - 遵循 `Exclude` 排除规则。
 
 2.  **Pipeline Processing (管道处理)**:
-    - **SizeProbe (尺寸探测)**: 过滤有效图片并解析尺寸（从缓存读取或解码文件头）。
+    - **SizeProbe (尺寸探测)**: 
+        - **图片**: 过滤有效图片并解析尺寸（从缓存读取或解码文件头）。
+        - **视频**: 过滤有效视频并提取元数据（时长、宽、高）。优先从 `.video-meta.json` 缓存加载；若缓存缺失或文件已变更（通过 `mtime` 和 `size` 判定），则调用 `ffprobe` 解析并更新缓存。
     - **MetaEnricher (元数据增强)**: 从缓存加载标签和说明。高并发（4个工作线程）。
     - **Mutator (变更器)**: 管道的“汇聚”阶段，负责更新全局 `TraverseNode` 树。
 
@@ -54,8 +56,9 @@ Mutator 是管道的终点，采用 4 个并发工作线程 (`workerSize=4`) 将
 3.  **Virtual Paths (虚拟路径)**:
     - 物理扫描结束后，`ApplyVirtualPaths` 将配置的虚拟文件夹合并到根节点中。
 
-4.  **Persistence (持久化)**:
+5.  **Persistence (持久化)**:
     - 最后，`Persist` 将当前状态（尺寸、结构）保存到缓存文件中。
+    - **视频元数据剪枝 (Pruning)**: 在保存 `.video-meta.json` 之前，系统会根据当前内存树中实际存在的视频集合对缓存进行清理，移除那些已被删除的文件条目，防止缓存无限增长。
 
 ## 3. 缓存与预热
 
@@ -63,11 +66,15 @@ Mutator 是管道的终点，采用 4 个并发工作线程 (`workerSize=4`) 将
 启动时，`Gallery.warmUp` 调用 `Scanner.Restore`。
 - 从缓存文件中加载扁平化的项目列表。
 - 将它们像文件系统扫描一样送入 **管道**。
-- 这能立即重建内存树，无需接触磁盘（除非检查文件存在性/属性涉及磁盘 I/O，但通常快得多）。
+- 这能立即重建内存树，无需接触磁盘。
 
 ### Persistence (持久化)
-- `Scanner.Persist` 将树状态转储为 JSON 缓存文件。
-- 包含图片尺寸、标签和结构，加速后续启动。
+- `Scanner.Persist` 将树状态转储为 JSON 缓存文件：
+    - `.img.json`: 目录树结构快照。
+    - `.img-size.json`: 图片尺寸缓存。
+    - `.video-meta.json`: 视频元数据（宽高、时长、mtime、size）。
+    - `.img-tag.json` / `.img-caption.json`: AI 标注的标签与说明。
+
 
 ## 4. 刷新策略 (Trigger)
 
