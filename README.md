@@ -42,8 +42,14 @@ go run ./app
 ```bash
 cd web
 npm install
-npm run dev
+npm run dev        # 默认本地代理
+npm run dev:local  # 本地代理 (127.0.0.1:8000)
+npm run dev:remote # 远程代理 (https://gallery.test4x.com/)
 ```
+
+代理配置从文件读取：
+- `web/config/proxy.local.json`
+- `web/config/proxy.remote.json`
 
 ## 测试与验证
 
