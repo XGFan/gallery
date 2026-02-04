@@ -11,6 +11,8 @@ export default defineConfig({
       "/api": "http://127.0.0.1:8000/",
       "/file": "http://127.0.0.1:8000/",
       "/thumbnail": "http://127.0.0.1:8000/",
+      "/video": "http://127.0.0.1:8000/",
+      "/poster": "http://127.0.0.1:8000/",
     }
   },
   build: {}
