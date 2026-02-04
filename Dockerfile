@@ -20,6 +20,7 @@ WORKDIR /app/app
 
 RUN GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -tags vips -o gallery .
 
+#saio-base包含了ffmpeg
 FROM docker.test4x.com/xgfan/saio-base:20260112 AS runner
 COPY --from=go-builder /app/app/gallery /app/gallery
 USER root
