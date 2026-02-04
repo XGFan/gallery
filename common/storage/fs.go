@@ -30,7 +30,7 @@ type FileInf interface {
 }
 
 var picExts = utils.NewSetWithSlice[string]([]string{"png", "jpg", "jpeg", "bmp", "gif"})
-var videoExts = utils.NewSetWithSlice[string]([]string{"mp4", "avi", "mkv", "webm", "flv", "wmv", "ts", "wmv"})
+var videoExts = utils.NewSetWithSlice[string]([]string{"mp4", "avi", "mkv", "webm", "flv", "wmv", "ts", "mov", "m4v", "ogv", "ogg"})
 
 func NewFs(str string) Storage {
 	return NewLocalFs(str)

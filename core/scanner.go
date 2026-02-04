@@ -185,6 +185,8 @@ func (s *Scanner) scanDir(node Node, out chan<- ScanItem, wg *sync.WaitGroup, ta
 		} else {
 			if storage.IsValidPic(info.Name()) {
 				out <- ScanItem{Type: ItemImage, Path: targetPath, Name: info.Name()}
+			} else if storage.IsValidVideo(info.Name()) {
+				out <- ScanItem{Type: ItemVideo, Path: targetPath, Name: info.Name()}
 			} else {
 				out <- ScanItem{Type: ItemFile, Path: targetPath, Name: info.Name()}
 			}
@@ -202,36 +204,80 @@ func (s *Scanner) runSizeProbe(in <-chan ScanItem, workerSize int) (out chan Sca
 		go func() {
 			defer wg.Done()
 			for item := range in {
-				if item.Type != ItemImage {
-					out <- item
-					continue
-				}
-
-				if item.Width > 0 && item.Height > 0 {
-					out <- item
-					continue
-				}
-
-				// Process Image
-				width, height := 0, 0
-				if size, ok := s.Cache.GetSize(item.Path); ok {
-					width, height = size.Width, size.Height
-				} else {
-					if f, err := s.OriginFs.Open(item.Path); err == nil {
-						if cfg, _, err := image.DecodeConfig(f); err == nil {
-							width, height = cfg.Width, cfg.Height
-						}
-						f.Close()
+				if item.Type == ItemImage {
+					if item.Width > 0 && item.Height > 0 {
+						out <- item
+						continue
 					}
+
+					// Process Image
+					width, height := 0, 0
+					if size, ok := s.Cache.GetSize(item.Path); ok {
+						width, height = size.Width, size.Height
+					} else {
+						if f, err := s.OriginFs.Open(item.Path); err == nil {
+							if cfg, _, err := image.DecodeConfig(f); err == nil {
+								width, height = cfg.Width, cfg.Height
+							}
+							f.Close()
+						}
+					}
+
+					// Filter
+					if width > 0 && height > 0 {
+						item.Width = width
+						item.Height = height
+						out <- item
+					}
+					// Else: Drop
+					continue
 				}
 
-				// Filter
-				if width > 0 && height > 0 {
-					item.Width = width
-					item.Height = height
+				if item.Type != ItemVideo {
 					out <- item
+					continue
 				}
-				// Else: Drop
+
+				f, err := s.OriginFs.Open(item.Path)
+				if err != nil {
+					continue
+				}
+				info, err := f.Stat()
+				f.Close()
+				if err != nil {
+					continue
+				}
+
+				meta, ok := s.Cache.GetVideoMeta(item.Path)
+				if ok && !s.Cache.NeedsVideoMetaRefresh(item.Path, info.ModTime(), info.Size()) && meta.Width > 0 && meta.Height > 0 {
+					item.Width = meta.Width
+					item.Height = meta.Height
+					item.DurationSec = meta.DurationSec
+					out <- item
+					continue
+				}
+
+				absPath := s.OriginFs.Join(s.OriginFs.GetPath(), item.Path)
+				width, height, durationSec, err := ProbeVideoMeta(absPath)
+				if err != nil {
+					log.Printf("ffprobe failed for %s: %s", item.Path, err.Error())
+					continue
+				}
+
+				item.Width = width
+				item.Height = height
+				item.DurationSec = durationSec
+
+				s.Cache.UpsertVideoMeta(item.Path, VideoMeta{
+					Path:            item.Path,
+					DurationSec:     durationSec,
+					Width:           width,
+					Height:          height,
+					SizeBytes:       info.Size(),
+					ModTimeUnixNano: info.ModTime().UnixNano(),
+				})
+
+				out <- item
 			}
 		}()
 	}
@@ -287,27 +333,40 @@ func (s *Scanner) runMutator(in <-chan ScanItem, workerSize int, data *TraverseN
 			for item := range in {
 				switch item.Type {
 				case ItemDir:
+					if item.Path == "." {
+						item.Path = ""
+					}
 					node := data.Locate(item.Path)
 					node.mu.Lock()
 					if node.LastScanID < currentScanID {
 						node.Others = make([]Node, 0)
+						node.Images = make([]ImageNode, 0)
+						node.Videos = make([]VideoNode, 0)
 					}
 					node.LastScanID = currentScanID
 					node.mu.Unlock()
 
 				case ItemFile:
 					dirPath := path.Dir(item.Path)
+					if dirPath == "." {
+						dirPath = ""
+					}
 					node := data.Locate(dirPath)
 					node.mu.Lock()
 					if node.LastScanID < currentScanID {
 						node.LastScanID = currentScanID
 						node.Others = make([]Node, 0)
+						node.Images = make([]ImageNode, 0)
+						node.Videos = make([]VideoNode, 0)
 					}
 					node.Others = append(node.Others, Node{Name: item.Name, Path: item.Path})
 					node.mu.Unlock()
 
 				case ItemImage:
 					dirPath := path.Dir(item.Path)
+					if dirPath == "." {
+						dirPath = ""
+					}
 					node := data.Locate(dirPath)
 
 					imgNode := ImageNode{
@@ -318,25 +377,40 @@ func (s *Scanner) runMutator(in <-chan ScanItem, workerSize int, data *TraverseN
 					}
 
 					node.mu.Lock()
-					// O(1) append optimization:
-					// If this node hasn't been touched in this scan yet, reset it.
 					if node.LastScanID < currentScanID {
 						node.LastScanID = currentScanID
 						node.Images = make([]ImageNode, 0)
-						// Others is already handled by ItemFile case, but strictly speaking
-						// if a directory only has images, we should reset Others too if we want to be safe,
-						// or rely on CleanupRecursively.
-						// However, since we might visit ItemFile first or ItemImage first,
-						// we need to be careful not to maximize LastScanID without clearing if we want to clear.
-						// Actually, the safest bet is: Whichever comes first (Image or File or Dir) clears the node for the new scan.
-						// But since we can't easily coordinate concurrent workers for the *same* node without a lock (which we have),
-						// we just check the ID inside the lock.
+						node.Videos = make([]VideoNode, 0)
 						node.Others = make([]Node, 0)
 					}
 
-					// We only append. Duplicates within same scanID are impossible due to pipeline uniqueness (file path).
-					// Duplicates across scans are handled by the reset above.
 					node.Images = append(node.Images, imgNode)
+					node.mu.Unlock()
+
+				case ItemVideo:
+					dirPath := path.Dir(item.Path)
+					if dirPath == "." {
+						dirPath = ""
+					}
+					node := data.Locate(dirPath)
+
+					vidNode := VideoNode{
+						Node:        Node{Name: item.Name, Path: item.Path, LastScanID: currentScanID},
+						Size:        Size{Width: item.Width, Height: item.Height},
+						DurationSec: item.DurationSec,
+						Tags:        item.Tags,
+						Caption:     item.Caption,
+					}
+
+					node.mu.Lock()
+					if node.LastScanID < currentScanID {
+						node.LastScanID = currentScanID
+						node.Images = make([]ImageNode, 0)
+						node.Videos = make([]VideoNode, 0)
+						node.Others = make([]Node, 0)
+					}
+
+					node.Videos = append(node.Videos, vidNode)
 					node.mu.Unlock()
 				}
 			}
