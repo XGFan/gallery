@@ -1,0 +1,275 @@
+basePath: /
+definitions:
+  core.DirNode:
+    properties:
+      cover:
+        $ref: '#/definitions/core.ImageNode'
+      directories:
+        items:
+          $ref: '#/definitions/core.Node'
+        type: array
+      name:
+        type: string
+      path:
+        type: string
+    type: object
+  core.ImageNode:
+    properties:
+      caption:
+        type: string
+      height:
+        type: integer
+      name:
+        type: string
+      path:
+        type: string
+      tags:
+        items:
+          $ref: '#/definitions/core.TagInfo'
+        type: array
+      width:
+        type: integer
+    type: object
+  core.MediaResponse:
+    properties:
+      images:
+        items:
+          $ref: '#/definitions/core.ImageNode'
+        type: array
+      videos:
+        items:
+          $ref: '#/definitions/core.VideoNode'
+        type: array
+    type: object
+  core.Node:
+    properties:
+      name:
+        type: string
+      path:
+        type: string
+    type: object
+  core.NodeWithParent:
+    properties:
+      caption:
+        type: string
+      height:
+        type: integer
+      name:
+        type: string
+      parent:
+        type: string
+      path:
+        type: string
+      tags:
+        items:
+          $ref: '#/definitions/core.TagInfo'
+        type: array
+      width:
+        type: integer
+    type: object
+  core.SimpleDirectory:
+    properties:
+      directories:
+        items:
+          $ref: '#/definitions/core.DirNode'
+        type: array
+      images:
+        items:
+          $ref: '#/definitions/core.ImageNode'
+        type: array
+      others:
+        items:
+          $ref: '#/definitions/core.Node'
+        type: array
+      videos:
+        items:
+          $ref: '#/definitions/core.VideoNode'
+        type: array
+    type: object
+  core.TagInfo:
+    properties:
+      tag:
+        type: string
+      value:
+        type: integer
+    type: object
+  core.TagStat:
+    properties:
+      avgScore:
+        type: number
+      count:
+        type: integer
+      tag:
+        type: string
+      weight:
+        type: number
+    type: object
+  core.VideoNode:
+    properties:
+      caption:
+        type: string
+      duration_sec:
+        type: number
+      height:
+        type: integer
+      name:
+        type: string
+      path:
+        type: string
+      tags:
+        items:
+          $ref: '#/definitions/core.TagInfo'
+        type: array
+      width:
+        type: integer
+    type: object
+info:
+  contact: {}
+  description: Image gallery service with folder browsing, album management and tagging
+    support.
+  title: Gallery API
+  version: "1.0"
+paths:
+  /api/album/{name}:
+    get:
+      description: Returns all album directories (directories containing images) recursively
+      parameters:
+      - description: Directory path
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/core.DirNode'
+            type: array
+      summary: List all albums under a directory
+      tags:
+      - albums
+  /api/explore/{name}:
+    get:
+      description: Returns immediate contents of a directory (subdirectories, images,
+        others)
+      parameters:
+      - description: Directory path
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/core.SimpleDirectory'
+      summary: Explore a directory
+      tags:
+      - browse
+  /api/image/{name}:
+    get:
+      description: Returns all images recursively under the specified directory
+      parameters:
+      - description: Directory path
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/core.ImageNode'
+            type: array
+      summary: List all images under a directory
+      tags:
+      - images
+  /api/media/{name}:
+    get:
+      description: Returns all images and videos under the specified directory
+      parameters:
+      - description: Directory path
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: 'Flatten search into subdirectories (default: true)'
+        in: query
+        name: flat
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/core.MediaResponse'
+      summary: List all media under a directory
+      tags:
+      - media
+  /api/random/{name}:
+    get:
+      description: Returns a random image from the specified directory
+      parameters:
+      - description: Directory path
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: 'Flatten search into subdirectories (default: true)'
+        in: query
+        name: flat
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/core.NodeWithParent'
+      summary: Get a random image
+      tags:
+      - images
+  /api/tag:
+    get:
+      description: Returns tag statistics across all images
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/core.TagStat'
+            type: array
+      summary: Get all tags
+      tags:
+      - tags
+  /api/tree:
+    get:
+      description: Returns the directory tree structure
+      parameters:
+      - description: 'Include leaf nodes (default: true)'
+        in: query
+        name: leaf
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get folder tree
+      tags:
+      - browse
+swagger: "2.0"

@@ -108,6 +108,41 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/media/{name}": {
+            "get": {
+                "description": "Returns all images and videos under the specified directory",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "media"
+                ],
+                "summary": "List all media under a directory",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Directory path",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Flatten search into subdirectories (default: true)",
+                        "name": "flat",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/core.MediaResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/random/{name}": {
             "get": {
                 "description": "Returns a random image from the specified directory",
@@ -243,6 +278,23 @@ const docTemplate = `{
                 }
             }
         },
+        "core.MediaResponse": {
+            "type": "object",
+            "properties": {
+                "images": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.ImageNode"
+                    }
+                },
+                "videos": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.VideoNode"
+                    }
+                }
+            }
+        },
         "core.Node": {
             "type": "object",
             "properties": {
@@ -257,11 +309,29 @@ const docTemplate = `{
         "core.NodeWithParent": {
             "type": "object",
             "properties": {
-                "node": {
-                    "$ref": "#/definitions/core.ImageNode"
+                "caption": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
                 },
                 "parent": {
                     "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.TagInfo"
+                    }
+                },
+                "width": {
+                    "type": "integer"
                 }
             }
         },
@@ -284,6 +354,12 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/core.Node"
+                    }
+                },
+                "videos": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.VideoNode"
                     }
                 }
             }
@@ -313,6 +389,35 @@ const docTemplate = `{
                 },
                 "weight": {
                     "type": "number"
+                }
+            }
+        },
+        "core.VideoNode": {
+            "type": "object",
+            "properties": {
+                "caption": {
+                    "type": "string"
+                },
+                "duration_sec": {
+                    "type": "number"
+                },
+                "height": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/core.TagInfo"
+                    }
+                },
+                "width": {
+                    "type": "integer"
                 }
             }
         }
