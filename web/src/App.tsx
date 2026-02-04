@@ -22,7 +22,7 @@ const router = createBrowserRouter([
       const searchParams = new URL(request.url).searchParams;
       const mode = (searchParams.get("mode") ?? "album") as Mode
       const url = customEncodeURI((params['*'] ?? ''))
-      const requestMode = mode !== 'random' ? mode : 'image'
+      const requestMode = mode === 'image' ? 'media' : (mode !== 'random' ? mode : 'image')
       const resp = await axios.get(`/api/${requestMode}/${url}`, {});
       const images = resp2Image(resp.data as never, requestMode);
       if (mode === 'random') {

@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
-import { Album, AppCtx, DEFAULT_PAGE_SIZE, ImgData } from "./dto";
+import { useEffect, useState, useMemo } from "react";
+import { Album, AppCtx, DEFAULT_PAGE_SIZE, ImgData, getMimeType } from "./dto";
 import "./Viewer.css"
 import { Gallery } from "react-gallery-grid";
 import InfiniteScroll from "react-infinite-scroll-component";
 import Lightbox, { createIcon, IconButton, useLightboxState } from "yet-another-react-lightbox";
 import { Fullscreen, Slideshow, Zoom } from "yet-another-react-lightbox/plugins";
+import Video from "yet-another-react-lightbox/plugins/video";
 import "yet-another-react-lightbox/styles.css";
 import { useLoaderData, useNavigate } from "react-router-dom";
 import { Modal } from "./components/ui/Modal";
@@ -14,9 +15,10 @@ import { GalleryItem } from "./components/GalleryItem";
 const DEFAULT_PLUGINS = [
   Fullscreen,
   Slideshow,
-  Zoom
+  Zoom,
+  Video
 ]
-const RANDOM_PLUGINS = [Fullscreen, Slideshow, Zoom]
+const RANDOM_PLUGINS = [Fullscreen, Slideshow, Zoom, Video]
 
 const DEFAULT_ROW_HEIGHT = 500
 
@@ -42,6 +44,28 @@ export default function Viewer() {
   const [showConfig, setShowConfig] = useState(false)
   const [showCounter, setShowCounter] = useState(true)
   const navigate = useNavigate();
+
+  const slides = useMemo(() => {
+    const source = album.mode === 'random' ? fullAlbum.images : album.images;
+    return source.map(item => {
+      if (item.imageType === 'video' && item.playable !== false) {
+        return {
+          type: "video" as const,
+          poster: item.src,
+          width: item.width,
+          height: item.height,
+          sources: [
+            {
+              src: item.videoSrc!,
+              type: getMimeType(item.videoSrc!) || ""
+            }
+          ]
+        }
+      }
+      return item;
+    })
+  }, [album.mode, fullAlbum.images, album.images]);
+
   useEffect(() => {
     localStorage.setItem("row-height", String(rowHeight));
   }, [rowHeight])
@@ -100,11 +124,12 @@ export default function Viewer() {
 
   return <>
     <Lightbox
-      slides={album.mode === 'random' ? fullAlbum.images : album.images}
+      slides={slides}
       index={index}
       open={index >= 0}
       close={() => setIndex(-1)}
       plugins={album.mode === 'random' ? RANDOM_PLUGINS : DEFAULT_PLUGINS}
+      video={{ controls: true, playsInline: true, autoPlay: false }}
       toolbar={{
         buttons: [<GoToDirectory key="link2album" />, "close"],
       }}
@@ -146,7 +171,7 @@ export default function Viewer() {
                 setIndex(realIndex !== -1 ? realIndex : index);
                 break;
               case 'explore':
-                if (photo.imageType === 'image') {
+                if (photo.imageType === 'image' || (photo.imageType === 'video' && photo.playable !== false)) {
                   setIndex(realIndex !== -1 ? realIndex : index);
                 } else {
                   navigate(`/${photo.key}?mode=explore`)
