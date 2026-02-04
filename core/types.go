@@ -22,6 +22,7 @@ const (
 	ItemDir  ScanItemType = iota
 	ItemFile              // Non-image file
 	ItemImage
+	ItemVideo
 )
 
 // ScanItem carries data through the pipeline
@@ -31,10 +32,11 @@ type ScanItem struct {
 	Name string       `json:"name"`
 
 	// Payload (populated by stages)
-	Width   int       `json:"width,omitempty"`
-	Height  int       `json:"height,omitempty"`
-	Tags    []TagInfo `json:"tags,omitempty"`
-	Caption string    `json:"caption,omitempty"`
+	Width       int       `json:"width,omitempty"`
+	Height      int       `json:"height,omitempty"`
+	DurationSec float64   `json:"duration_sec,omitempty"`
+	Tags        []TagInfo `json:"tags,omitempty"`
+	Caption     string    `json:"caption,omitempty"`
 }
 
 // EmptySize represents an uninitialized size
@@ -76,6 +78,15 @@ type ImageNode struct {
 	Caption string    `json:"caption,omitempty"`
 }
 
+// VideoNode represents a video file
+type VideoNode struct {
+	Node
+	Size
+	DurationSec float64   `json:"duration_sec,omitempty"`
+	Tags        []TagInfo `json:"tags,omitempty"`
+	Caption     string    `json:"caption,omitempty"`
+}
+
 // DirNode represents a directory for API response
 type DirNode struct {
 	Node
@@ -93,6 +104,7 @@ type NodeWithParent struct {
 type TraverseNode struct {
 	Node
 	Images      []ImageNode
+	Videos      []VideoNode
 	Others      []Node
 	Directories map[string]*TraverseNode
 	CoverIndex  int
@@ -139,6 +151,11 @@ func (dn *TraverseNode) Load(sizeCache map[string]Size) {
 			dn.Images[i].Size = size
 		}
 	}
+	for i := range dn.Videos {
+		if size, ok := sizeCache[dn.Videos[i].Path]; ok {
+			dn.Videos[i].Size = size
+		}
+	}
 	for _, sub := range dn.Directories {
 		sub.Load(sizeCache)
 	}
@@ -161,6 +178,21 @@ func (dn *TraverseNode) LoadTagsAndCaptions(tagCache map[string][]TagInfo, capti
 			dn.Images[i].Caption = caption
 		}
 	}
+	for i := range dn.Videos {
+		path := dn.Videos[i].Path
+		if tags, ok := tagCache[path]; ok {
+			filtered := make([]TagInfo, 0, len(tags))
+			for _, tag := range tags {
+				if tag.Value >= TagMinValue && !blacklist.Contains(tag.Tag) {
+					filtered = append(filtered, tag)
+				}
+			}
+			dn.Videos[i].Tags = filtered
+		}
+		if caption, ok := captionCache[path]; ok {
+			dn.Videos[i].Caption = caption
+		}
+	}
 	for _, sub := range dn.Directories {
 		sub.LoadTagsAndCaptions(tagCache, captionCache, blacklist)
 	}
@@ -177,6 +209,11 @@ func (dn *TraverseNode) dumpRecursive(result map[string]Size) {
 	for _, img := range dn.Images {
 		if img.Size != EmptySize {
 			result[img.Path] = img.Size
+		}
+	}
+	for _, vid := range dn.Videos {
+		if vid.Size != EmptySize {
+			result[vid.Path] = vid.Size
 		}
 	}
 	for _, sub := range dn.Directories {
@@ -199,6 +236,14 @@ func (dn *TraverseNode) dumpMetaRecursive(tags map[string][]TagInfo, captions ma
 		}
 		if img.Caption != "" {
 			captions[img.Path] = img.Caption
+		}
+	}
+	for _, vid := range dn.Videos {
+		if len(vid.Tags) > 0 {
+			tags[vid.Path] = vid.Tags
+		}
+		if vid.Caption != "" {
+			captions[vid.Path] = vid.Caption
 		}
 	}
 	for _, sub := range dn.Directories {
@@ -230,6 +275,17 @@ func (dn *TraverseNode) CleanupRecursively(currentScanID int64) int {
 	}
 	dn.Images = validImages
 
+	// Cleanup videos (filter out those not scanned)
+	validVideos := make([]VideoNode, 0, len(dn.Videos))
+	for _, vid := range dn.Videos {
+		if vid.LastScanID == currentScanID {
+			validVideos = append(validVideos, vid)
+		} else {
+			deletedCount++
+		}
+	}
+	dn.Videos = validVideos
+
 	return deletedCount
 }
 
@@ -243,6 +299,14 @@ func (dn *TraverseNode) ToStructureOnly() *TraverseNode {
 		}
 	}
 
+	videos := make([]VideoNode, len(dn.Videos))
+	for i, vid := range dn.Videos {
+		videos[i] = VideoNode{
+			Node: Node{Name: vid.Name, Path: vid.Path},
+			Size: EmptySize,
+		}
+	}
+
 	dirs := make(map[string]*TraverseNode)
 	for name, sub := range dn.Directories {
 		dirs[name] = sub.ToStructureOnly()
@@ -251,6 +315,7 @@ func (dn *TraverseNode) ToStructureOnly() *TraverseNode {
 	return &TraverseNode{
 		Node:        Node{Name: dn.Name, Path: dn.Path},
 		Images:      images,
+		Videos:      videos,
 		Others:      dn.Others,
 		Directories: dirs,
 		CoverIndex:  dn.CoverIndex,
@@ -278,6 +343,11 @@ func (n *TraverseNode) flattenRecursive(items *[]ScanItem) {
 	// Add Images
 	for _, img := range n.Images {
 		*items = append(*items, ScanItem{Type: ItemImage, Path: img.Path, Name: img.Name, Width: img.Size.Width, Height: img.Size.Height, Tags: img.Tags, Caption: img.Caption})
+	}
+
+	// Add Videos
+	for _, vid := range n.Videos {
+		*items = append(*items, ScanItem{Type: ItemVideo, Path: vid.Path, Name: vid.Name, Width: vid.Size.Width, Height: vid.Size.Height, DurationSec: vid.DurationSec, Tags: vid.Tags, Caption: vid.Caption})
 	}
 
 	// Recurse
@@ -325,7 +395,14 @@ func joinPath(base, name string) string {
 type SimpleDirectory struct {
 	Directories []DirNode   `json:"directories,omitempty"`
 	Images      []ImageNode `json:"images,omitempty"`
+	Videos      []VideoNode `json:"videos,omitempty"`
 	Others      []Node      `json:"others,omitempty"`
+}
+
+// MediaResponse represents API response for media endpoint
+type MediaResponse struct {
+	Images []ImageNode `json:"images"`
+	Videos []VideoNode `json:"videos"`
 }
 
 // EmptyNode represents an empty image node
@@ -343,11 +420,26 @@ func (dn *TraverseNode) Image() []ImageNode {
 	return images
 }
 
+// Video returns all videos recursively
+func (dn *TraverseNode) Video() []VideoNode {
+	var videos = make([]VideoNode, 0, 16)
+	dn.ScanVideos(&videos)
+	return videos
+}
+
 // ScanImages collects all images recursively
 func (dn *TraverseNode) ScanImages(result *[]ImageNode) {
 	*result = append(*result, dn.Images...)
 	for _, sub := range dn.Directories {
 		sub.ScanImages(result)
+	}
+}
+
+// ScanVideos collects all videos recursively
+func (dn *TraverseNode) ScanVideos(result *[]VideoNode) {
+	*result = append(*result, dn.Videos...)
+	for _, sub := range dn.Directories {
+		sub.ScanVideos(result)
 	}
 }
 
@@ -366,6 +458,7 @@ func (dn *TraverseNode) Explore() *SimpleDirectory {
 	return &SimpleDirectory{
 		Directories: subDirectories,
 		Images:      dn.Images,
+		Videos:      dn.Videos,
 		Others:      dn.Others,
 	}
 }
@@ -380,7 +473,7 @@ func (dn *TraverseNode) Album() []DirNode {
 // ScanAlbum collects all album directories recursively
 func (dn *TraverseNode) ScanAlbum(result *[]DirNode) {
 	for _, sub := range dn.Directories {
-		if sub.HasImages() {
+		if sub.HasImages() || sub.HasVideos() {
 			*result = append(*result, DirNode{
 				Node: Node{
 					Name: sub.Name,
@@ -448,6 +541,18 @@ func (dn *TraverseNode) Cover() ImageNode {
 	if dn.HasImages() {
 		return dn.Images[dn.CoverIndex]
 	}
+	if dn.HasVideos() {
+		vid := dn.Videos[0]
+		if vid.Size.Width > 0 && vid.Size.Height > 0 {
+			return ImageNode{
+				Node: Node{
+					Name: vid.Name,
+					Path: vid.Path,
+				},
+				Size: vid.Size,
+			}
+		}
+	}
 	if dn.HasSubDirectories() {
 		for _, sub := range dn.Directories {
 			subCover := sub.Cover()
@@ -462,6 +567,11 @@ func (dn *TraverseNode) Cover() ImageNode {
 // HasImages checks if directory has images
 func (dn *TraverseNode) HasImages() bool {
 	return dn.Images != nil && len(dn.Images) > 0
+}
+
+// HasVideos checks if directory has videos
+func (dn *TraverseNode) HasVideos() bool {
+	return dn.Videos != nil && len(dn.Videos) > 0
 }
 
 // HasSubDirectories checks if directory has subdirectories
