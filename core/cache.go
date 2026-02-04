@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"reflect"
+	"sync"
+	"time"
 
 	utils "github.com/XGFan/go-utils"
 
@@ -17,7 +19,18 @@ const ImgSizeCache = ".img-size.json"
 const ImgTagCache = ".img-tag.json"
 const ImgCaptionCache = ".img-caption.json"
 const ImgStructureCache = ".img.json"
+const VideoMetaCache = ".video-meta.json"
 const TagMinValue = 60
+
+// VideoMeta represents metadata for video files
+type VideoMeta struct {
+	Path            string  `json:"path,omitempty"`
+	DurationSec     float64 `json:"duration_sec"`
+	Width           int     `json:"width"`
+	Height          int     `json:"height"`
+	SizeBytes       int64   `json:"size_bytes"`
+	ModTimeUnixNano int64   `json:"mod_time_unix_nano"`
+}
 
 // CacheManager handles persistence with smart diffing
 type CacheManager struct {
@@ -25,19 +38,24 @@ type CacheManager struct {
 	TagBlacklist utils.Set[string]
 
 	// Internal state mirroring disk content
-	currentSizes    map[string]Size
-	currentTags     map[string][]TagInfo
-	currentCaptions map[string]string
+	currentSizes     map[string]Size
+	currentTags      map[string][]TagInfo
+	currentCaptions  map[string]string
+	currentVideoMeta map[string]VideoMeta
+	workingVideoMeta map[string]VideoMeta
+	videoMetaMu      sync.RWMutex
 }
 
 // NewCacheManager creates a new CacheManager
 func NewCacheManager(cacheFs storage.Storage, tagBlacklist []string) *CacheManager {
 	return &CacheManager{
-		Fs:              cacheFs,
-		TagBlacklist:    utils.NewSetWithSlice(tagBlacklist),
-		currentSizes:    make(map[string]Size),
-		currentTags:     make(map[string][]TagInfo),
-		currentCaptions: make(map[string]string),
+		Fs:               cacheFs,
+		TagBlacklist:     utils.NewSetWithSlice(tagBlacklist),
+		currentSizes:     make(map[string]Size),
+		currentTags:      make(map[string][]TagInfo),
+		currentCaptions:  make(map[string]string),
+		currentVideoMeta: make(map[string]VideoMeta),
+		workingVideoMeta: make(map[string]VideoMeta),
 	}
 }
 
@@ -48,8 +66,15 @@ func (c *CacheManager) LoadScanItems() ([]ScanItem, error) {
 	c.loadJSON(ImgSizeCache, &c.currentSizes)
 	c.loadJSON(ImgTagCache, &c.currentTags)
 	c.loadJSON(ImgCaptionCache, &c.currentCaptions)
+	c.loadJSON(VideoMetaCache, &c.currentVideoMeta)
 
-	log.Printf("Knowledge Base loaded: %d sizes, %d tags", len(c.currentSizes), len(c.currentTags))
+	c.videoMetaMu.Lock()
+	for k, v := range c.currentVideoMeta {
+		c.workingVideoMeta[k] = v
+	}
+	c.videoMetaMu.Unlock()
+
+	log.Printf("Knowledge Base loaded: %d sizes, %d tags, %d video metas", len(c.currentSizes), len(c.currentTags), len(c.currentVideoMeta))
 
 	// 2. Load Structure Snapshot (Event Stream)
 	var items []ScanItem
@@ -100,7 +125,47 @@ func (c *CacheManager) Save(root *TraverseNode) error {
 		}
 	}
 
+	// 4. Diff and Save Video Meta
+	visibleVideos := collectVideoPaths(root)
+	c.videoMetaMu.Lock()
+	pruneVideoMeta(c.workingVideoMeta, visibleVideos)
+	if !reflect.DeepEqual(c.currentVideoMeta, c.workingVideoMeta) {
+		if c.saveJSON(VideoMetaCache, c.workingVideoMeta) == nil {
+			c.currentVideoMeta = make(map[string]VideoMeta)
+			for k, v := range c.workingVideoMeta {
+				c.currentVideoMeta[k] = v
+			}
+			log.Printf("Updated video meta cache: %d entries", len(c.currentVideoMeta))
+		}
+	}
+	c.videoMetaMu.Unlock()
+
 	return nil
+}
+
+func collectVideoPaths(root *TraverseNode) map[string]struct{} {
+	visible := make(map[string]struct{})
+	if root == nil {
+		return visible
+	}
+	for _, video := range root.Video() {
+		if video.Path == "" {
+			continue
+		}
+		visible[video.Path] = struct{}{}
+	}
+	return visible
+}
+
+func pruneVideoMeta(meta map[string]VideoMeta, visible map[string]struct{}) {
+	if len(meta) == 0 {
+		return
+	}
+	for path := range meta {
+		if _, ok := visible[path]; !ok {
+			delete(meta, path)
+		}
+	}
 }
 
 // GetSize provides size lookup for Scanner (optimization)
@@ -117,6 +182,32 @@ func (c *CacheManager) GetTags(path string) []TagInfo {
 // GetCaption provides caption lookup (optimization)
 func (c *CacheManager) GetCaption(path string) string {
 	return c.currentCaptions[path]
+}
+
+// GetVideoMeta provides video metadata lookup
+func (c *CacheManager) GetVideoMeta(path string) (VideoMeta, bool) {
+	c.videoMetaMu.RLock()
+	defer c.videoMetaMu.RUnlock()
+	v, ok := c.workingVideoMeta[path]
+	return v, ok
+}
+
+// UpsertVideoMeta updates video metadata
+func (c *CacheManager) UpsertVideoMeta(path string, meta VideoMeta) {
+	c.videoMetaMu.Lock()
+	defer c.videoMetaMu.Unlock()
+	c.workingVideoMeta[path] = meta
+}
+
+// NeedsVideoMetaRefresh checks if video metadata needs update based on modTime and size
+func (c *CacheManager) NeedsVideoMetaRefresh(path string, modTime time.Time, size int64) bool {
+	c.videoMetaMu.RLock()
+	defer c.videoMetaMu.RUnlock()
+	meta, ok := c.workingVideoMeta[path]
+	if !ok {
+		return true
+	}
+	return meta.ModTimeUnixNano != modTime.UnixNano() || meta.SizeBytes != size
 }
 
 // Helpers
