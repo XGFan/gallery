@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strings"
 	"time"
 
 	utils "github.com/XGFan/go-utils"
@@ -154,9 +155,31 @@ func (g *Gallery) HandleTree(c *gin.Context) {
 // @Router /api/explore/{name} [get]
 func (g *Gallery) HandleExplore(c *gin.Context) {
 	g.Trigger()
-	name := c.Param("name")[1:]
+	name := strings.TrimPrefix(c.Param("name"), "/")
 	node := g.Root.Locate(name)
-	c.JSON(200, node.Explore())
+	result := node.Explore()
+	result.Videos = g.fillVideoMetas(result.Videos)
+	for i := range result.Directories {
+		g.fillCoverVideoMeta(&result.Directories[i].Cover)
+	}
+	if result.Directories == nil {
+		result.Directories = make([]core.DirNode, 0)
+	}
+	if result.Images == nil {
+		result.Images = make([]core.ImageNode, 0)
+	}
+	if result.Videos == nil {
+		result.Videos = make([]core.VideoNode, 0)
+	}
+	if result.Others == nil {
+		result.Others = make([]core.Node, 0)
+	}
+	c.JSON(200, gin.H{
+		"directories": result.Directories,
+		"images":      result.Images,
+		"videos":      result.Videos,
+		"others":      result.Others,
+	})
 }
 
 // HandleImage godoc
@@ -172,6 +195,46 @@ func (g *Gallery) HandleImage(c *gin.Context) {
 	name := c.Param("name")[1:]
 	node := g.Root.Locate(name)
 	c.JSON(200, node.Image())
+}
+
+// HandleMedia godoc
+// @Summary List all media under a directory
+// @Description Returns all images and videos under the specified directory
+// @Tags media
+// @Produce json
+// @Param name path string true "Directory path"
+// @Param flat query bool false "Flatten search into subdirectories (default: true)"
+// @Success 200 {object} core.MediaResponse
+// @Router /api/media/{name} [get]
+func (g *Gallery) HandleMedia(c *gin.Context) {
+	g.Trigger()
+	name := strings.TrimPrefix(c.Param("name"), "/")
+	node := g.Root.Locate(name)
+	flat := utils.DefaultToTrue(c.Query("flat"))
+
+	var images []core.ImageNode
+	var videos []core.VideoNode
+
+	if flat {
+		images = node.Image()
+		videos = node.Video()
+	} else {
+		images = node.Images
+		videos = node.Videos
+	}
+
+	videos = g.fillVideoMetas(videos)
+	if images == nil {
+		images = make([]core.ImageNode, 0)
+	}
+	if videos == nil {
+		videos = make([]core.VideoNode, 0)
+	}
+
+	c.JSON(200, gin.H{
+		"images": images,
+		"videos": videos,
+	})
 }
 
 // HandleAlbum godoc
@@ -232,6 +295,8 @@ func Init(s *gin.Engine, conf config.GalleryConfig) {
 	// image OriginFs
 	s.StaticFS("/file/", imageResolver.OriginAdapter)
 	s.StaticFS("/thumbnail/", imageResolver.ThumbAdapter)
+	s.StaticFS("/video/", imageResolver.VideoAdapter)
+	s.StaticFS("/poster/", imageResolver.PosterAdapter)
 
 	// Swagger UI
 	s.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
@@ -240,6 +305,7 @@ func Init(s *gin.Engine, conf config.GalleryConfig) {
 	s.GET("/api/tree", gallery.HandleTree)
 	s.GET("/api/explore/*name", gallery.HandleExplore)
 	s.GET("/api/image/*name", gallery.HandleImage)
+	s.GET("/api/media/*name", gallery.HandleMedia)
 	s.GET("/api/album/*name", gallery.HandleAlbum)
 	s.GET("/api/random/*name", gallery.HandleRandom)
 	s.GET("/api/tag", gallery.HandleTag)
@@ -279,4 +345,83 @@ func filterEmpty(m map[string]interface{}) {
 			}
 		}
 	}
+}
+
+func (g *Gallery) fillVideoMetas(videos []core.VideoNode) []core.VideoNode {
+	if len(videos) == 0 {
+		return videos
+	}
+	filled := make([]core.VideoNode, 0, len(videos))
+	for i := range videos {
+		video := videos[i]
+		if video.Width > 0 && video.Height > 0 && video.DurationSec > 0 {
+			filled = append(filled, video)
+			continue
+		}
+		meta, ok := g.getVideoMeta(video.Path)
+		if !ok {
+			continue
+		}
+		video.Width = meta.Width
+		video.Height = meta.Height
+		video.DurationSec = meta.DurationSec
+		filled = append(filled, video)
+	}
+	return filled
+}
+
+func (g *Gallery) fillCoverVideoMeta(cover *core.ImageNode) {
+	if cover == nil || cover.Path == "" {
+		return
+	}
+	if cover.Width > 0 && cover.Height > 0 {
+		return
+	}
+	if !storage.IsValidVideo(cover.Path) {
+		return
+	}
+	meta, ok := g.getVideoMeta(cover.Path)
+	if !ok {
+		return
+	}
+	cover.Width = meta.Width
+	cover.Height = meta.Height
+}
+
+func (g *Gallery) getVideoMeta(videoPath string) (core.VideoMeta, bool) {
+	f, err := g.scanner.OriginFs.Open(videoPath)
+	if err != nil {
+		log.Printf("ffprobe failed for %s: %s", videoPath, err.Error())
+		return core.VideoMeta{}, false
+	}
+	info, err := f.Stat()
+	f.Close()
+	if err != nil {
+		log.Printf("ffprobe failed for %s: %s", videoPath, err.Error())
+		return core.VideoMeta{}, false
+	}
+
+	if meta, ok := g.scanner.Cache.GetVideoMeta(videoPath); ok {
+		if !g.scanner.Cache.NeedsVideoMetaRefresh(videoPath, info.ModTime(), info.Size()) && meta.Width > 0 && meta.Height > 0 && meta.DurationSec > 0 {
+			return meta, true
+		}
+	}
+
+	absPath := g.scanner.OriginFs.Join(g.scanner.OriginFs.GetPath(), videoPath)
+	width, height, durationSec, err := core.ProbeVideoMeta(absPath)
+	if err != nil {
+		log.Printf("ffprobe failed for %s: %s", videoPath, err.Error())
+		return core.VideoMeta{}, false
+	}
+
+	meta := core.VideoMeta{
+		Path:            videoPath,
+		DurationSec:     durationSec,
+		Width:           width,
+		Height:          height,
+		SizeBytes:       info.Size(),
+		ModTimeUnixNano: info.ModTime().UnixNano(),
+	}
+	g.scanner.Cache.UpsertVideoMeta(videoPath, meta)
+	return meta, true
 }
