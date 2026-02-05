@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strconv"
 	"strings"
 
 	utils "github.com/XGFan/go-utils"
@@ -103,12 +104,17 @@ func NewStaticImageResolver(baseFs storage.Storage,
 }
 
 type posterGenerator struct {
-	originFs storage.Storage
-	cacheFs  storage.Storage
+	originFs         storage.Storage
+	cacheFs          storage.Storage
+	getVideoMeta     func(path string) (core.VideoMeta, bool)
+	probeVideoMeta   func(absPath string) (int, int, float64, error)
+	runPosterAttempt func(ctx context.Context, source string, args []string, label string) error
 }
 
-func newPosterGenerator(originFs storage.Storage, cacheFs storage.Storage) *posterGenerator {
-	return &posterGenerator{originFs: originFs, cacheFs: cacheFs}
+func newPosterGenerator(originFs storage.Storage, cacheFs storage.Storage, getVideoMeta func(path string) (core.VideoMeta, bool)) *posterGenerator {
+	pg := &posterGenerator{originFs: originFs, cacheFs: cacheFs, getVideoMeta: getVideoMeta, probeVideoMeta: core.ProbeVideoMeta}
+	pg.runPosterAttempt = pg.defaultRunPosterAttempt
+	return pg
 }
 
 func (pg *posterGenerator) Generate(ctx context.Context, source string) error {
@@ -130,12 +136,87 @@ func (pg *posterGenerator) Generate(ctx context.Context, source string) error {
 		return fmt.Errorf("poster cache mkdir failed: %s, err: %w", outputPath, err)
 	}
 
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-ss", "00:00:05", "-i", inputPath, "-vf", "thumbnail=100,scale=1280:-1", "-vframes", "1", "-q:v", "2", "-y", outputPath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("poster generate failed: %s, err: %w, output: %s", source, err, strings.TrimSpace(string(output)))
+	runner := pg.runPosterAttempt
+	if runner == nil {
+		runner = pg.defaultRunPosterAttempt
+	}
+	if err := runner(ctx, source, buildPosterAttemptArgs(inputPath, outputPath), "generate"); err != nil {
+		durationSec, durationErr := pg.getDurationSec(source)
+		if durationErr != nil {
+			return durationErr
+		}
+		offsetSec, ok := calcPosterOffsetSec(durationSec)
+		if !ok {
+			return fmt.Errorf("poster generate failed: %s, invalid duration: %.3f", source, durationSec)
+		}
+		if retryErr := runner(ctx, source, buildPosterAttemptWithOffsetArgs(inputPath, outputPath, offsetSec), "fallback"); retryErr != nil {
+			return retryErr
+		}
 	}
 
 	return nil
+}
+
+func (pg *posterGenerator) defaultRunPosterAttempt(ctx context.Context, source string, args []string, label string) error {
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("poster %s failed: %s, err: %w, output: %s", label, source, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func (pg *posterGenerator) getDurationSec(source string) (float64, error) {
+	if pg.getVideoMeta != nil {
+		if meta, ok := pg.getVideoMeta(source); ok {
+			if meta.DurationSec > 0 {
+				return meta.DurationSec, nil
+			}
+		}
+	}
+	inputPath := pg.originFs.Join(pg.originFs.GetPath(), source)
+	probe := pg.probeVideoMeta
+	if probe == nil {
+		probe = core.ProbeVideoMeta
+	}
+	_, _, durationSec, err := probe(inputPath)
+	if err != nil {
+		return 0, fmt.Errorf("poster duration probe failed: %s, err: %w", source, err)
+	}
+	if durationSec <= 0 {
+		return 0, fmt.Errorf("poster duration probe failed: %s, invalid duration", source)
+	}
+	return durationSec, nil
+}
+
+const posterFilter = "thumbnail=100,scale=1280:-1,format=yuvj420p"
+
+func buildPosterAttemptArgs(inputPath string, outputPath string) []string {
+	return []string{"-i", inputPath, "-vf", posterFilter, "-pix_fmt", "yuvj420p", "-vframes", "1", "-q:v", "2", "-y", outputPath}
+}
+
+func buildPosterAttemptWithOffsetArgs(inputPath string, outputPath string, offsetSec float64) []string {
+	return []string{"-ss", formatPosterOffsetSec(offsetSec), "-i", inputPath, "-vf", posterFilter, "-pix_fmt", "yuvj420p", "-vframes", "1", "-q:v", "2", "-y", outputPath}
+}
+
+func formatPosterOffsetSec(offsetSec float64) string {
+	return strconv.FormatFloat(offsetSec, 'f', 3, 64)
+}
+
+func calcPosterOffsetSec(durationSec float64) (float64, bool) {
+	if durationSec <= 0 {
+		return 0, false
+	}
+	if durationSec <= 30 {
+		offset := durationSec / 2
+		if offset > 2 {
+			offset = 2
+		}
+		return offset, true
+	}
+	if durationSec <= 300 {
+		return 30, true
+	}
+	return 45, true
 }
 
 var posterCoverCandidates = []string{"cover.jpg", "cover.jpeg", "cover.png", "cover.webp"}

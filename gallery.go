@@ -289,7 +289,7 @@ func Init(s *gin.Engine, conf config.GalleryConfig) {
 	cacheFs := storage.NewFs(conf.Cache)
 	gallery := NewGallery(originFs, cacheFs, conf.Resource.Exclude, conf.Resource.VirtualPath, conf.Resource.TagBlacklist, ctx)
 	imageResolver := NewStaticImageResolver(originFs, cacheFs, conf.Resource.ForceThumbnail, ctx)
-	posterQueue := thumbnail.NewPosterQueue(newPosterGenerator(originFs, cacheFs), thumbnail.PosterQueueOptions{})
+	posterQueue := thumbnail.NewPosterQueue(newPosterGenerator(originFs, cacheFs, gallery.scanner.Cache.GetVideoMeta), thumbnail.PosterQueueOptions{})
 	posterQueue.Run(ctx)
 	imageResolver.PosterQueue = posterQueue
 	gallery.scanner.PosterQueue = posterQueue

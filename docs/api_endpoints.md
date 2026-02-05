@@ -90,7 +90,7 @@ Gallery 的 API 设计遵循 **“读写分离”** 与 **“被动刷新”** �
     *   **响应状态**:
         *   **命中 (Ready)**: 返回 200 OK + 图片二进制流。设置 Header `X-Poster-Status: ready`。
         *   **未命中 (Pending)**: 返回 200 OK + **占位 SVG 图** (`image/svg+xml; charset=utf-8`)。设置 Header `X-Poster-Status: pending` 与 `Cache-Control: no-store`。
-    *   **后台动作**: 如果未命中且尚未生成，接口会异步触发封面入队任务。前端可根据 `X-Poster-Status` 或图片内容自行决定重试策略（本系统不强制重试）。
+    *   **后台动作**: 如果未命中且尚未生成，接口会异步触发封面入队任务。封面生成器采用 **两阶段策略**：首先尝试寻找代表帧（`thumbnail=100`），失败则根据视频时长（优先从元数据缓存获取）计算 2s/30s/45s 的偏移量进行回退生成。前端可根据 `X-Poster-Status` 或图片内容自行决定重试策略（本系统不强制重试）。
 
 ## 4. 约定与最佳实践
 
