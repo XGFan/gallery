@@ -21,6 +21,7 @@ import (
 	"gallery/config"
 	"gallery/core"
 	_ "gallery/swagger"
+	"gallery/thumbnail"
 )
 
 // @title Gallery API
@@ -46,7 +47,7 @@ func NewGallery(originFs storage.Storage, cacheFs storage.Storage,
 	cache := core.NewCacheManager(cacheFs, tagBlacklist)
 	g := &Gallery{
 		Root:          &core.TraverseNode{Directories: make(map[string]*core.TraverseNode)},
-		scanner:       core.NewScanner(originFs, exclude, cache, virtualPath),
+		scanner:       core.NewScanner(originFs, exclude, cache, virtualPath, nil),
 		rescanTrigger: make(chan struct{}),
 	}
 	go g.scanWorker(ctx)
@@ -288,6 +289,10 @@ func Init(s *gin.Engine, conf config.GalleryConfig) {
 	cacheFs := storage.NewFs(conf.Cache)
 	gallery := NewGallery(originFs, cacheFs, conf.Resource.Exclude, conf.Resource.VirtualPath, conf.Resource.TagBlacklist, ctx)
 	imageResolver := NewStaticImageResolver(originFs, cacheFs, conf.Resource.ForceThumbnail, ctx)
+	posterQueue := thumbnail.NewPosterQueue(newPosterGenerator(originFs, cacheFs), thumbnail.PosterQueueOptions{})
+	posterQueue.Run(ctx)
+	imageResolver.PosterQueue = posterQueue
+	gallery.scanner.PosterQueue = posterQueue
 
 	// warmup
 	go gallery.warmUp()
@@ -296,7 +301,7 @@ func Init(s *gin.Engine, conf config.GalleryConfig) {
 	s.StaticFS("/file/", imageResolver.OriginAdapter)
 	s.StaticFS("/thumbnail/", imageResolver.ThumbAdapter)
 	s.StaticFS("/video/", imageResolver.VideoAdapter)
-	s.StaticFS("/poster/", imageResolver.PosterAdapter)
+	s.GET("/poster/*name", imageResolver.HandlePoster)
 
 	// Swagger UI
 	s.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

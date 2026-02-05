@@ -83,9 +83,14 @@ Gallery 的 API 设计遵循 **“读写分离”** 与 **“被动刷新”** �
 *   **视频流**: `/video/*path`
     *   仅允许白名单中的视频格式：`.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`。
 *   **视频封面**: `/poster/*path`
-    *   **优先级**: 
-        1.  如果视频同目录下存在 `cover.jpg/jpeg/png/webp`，优先返回该文件。
-        2.  否则，使用 `ffmpeg` 抽取视频第 5 秒的帧作为封面，并缓存于 `.cache/` 目录下。
+    *   **业务逻辑**: 该接口不再同步调用 `ffmpeg`，以保证毫秒级的响应速度。
+    *   **判定优先级**: 
+        1.  **物理封面优先**: 如果视频同目录下存在 `cover.jpg/jpeg/png/webp`，直接返回。
+        2.  **缓存封面**: 否则检查 `.cache/<videoPath>.poster.jpg` 是否存在。
+    *   **响应状态**:
+        *   **命中 (Ready)**: 返回 200 OK + 图片二进制流。设置 Header `X-Poster-Status: ready`。
+        *   **未命中 (Pending)**: 返回 200 OK + **占位 SVG 图** (`image/svg+xml; charset=utf-8`)。设置 Header `X-Poster-Status: pending` 与 `Cache-Control: no-store`。
+    *   **后台动作**: 如果未命中且尚未生成，接口会异步触发封面入队任务。前端可根据 `X-Poster-Status` 或图片内容自行决定重试策略（本系统不强制重试）。
 
 ## 4. 约定与最佳实践
 

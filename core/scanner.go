@@ -19,15 +19,17 @@ type Scanner struct {
 	Exclude      utils.Set[string]
 	Cache        *CacheManager // Dependency Injection
 	VirtualPaths map[string][]string
+	PosterQueue  PosterEnqueuer
 }
 
 // NewScanner creates a new Scanner
-func NewScanner(originFs storage.Storage, exclude []string, cache *CacheManager, virtualPaths map[string][]string) *Scanner {
+func NewScanner(originFs storage.Storage, exclude []string, cache *CacheManager, virtualPaths map[string][]string, posterQueue PosterEnqueuer) *Scanner {
 	return &Scanner{
 		OriginFs:     originFs,
 		Exclude:      utils.NewSetWithSlice(exclude),
 		Cache:        cache,
 		VirtualPaths: virtualPaths,
+		PosterQueue:  posterQueue,
 	}
 }
 
@@ -248,8 +250,11 @@ func (s *Scanner) runSizeProbe(in <-chan ScanItem, workerSize int) (out chan Sca
 					continue
 				}
 
+				needsRefresh := s.Cache.NeedsVideoMetaRefresh(item.Path, info.ModTime(), info.Size())
+				s.enqueuePosterIfNeeded(item.Path, needsRefresh)
+
 				meta, ok := s.Cache.GetVideoMeta(item.Path)
-				if ok && !s.Cache.NeedsVideoMetaRefresh(item.Path, info.ModTime(), info.Size()) && meta.Width > 0 && meta.Height > 0 {
+				if ok && !needsRefresh && meta.Width > 0 && meta.Height > 0 {
 					item.Width = meta.Width
 					item.Height = meta.Height
 					item.DurationSec = meta.DurationSec
