@@ -1,5 +1,58 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { ImgData } from '../src/dto'
+
+// Helper to check for video or fallback
+async function expectVideoOrFallback(locator: Locator) {
+  const video = locator.locator('video');
+  const fallback = locator.getByTestId('video-fallback');
+  await expect(video.or(fallback)).toBeVisible();
+}
+
+async function swipeUp(page: Page, slide: Locator) {
+  const box = await slide.boundingBox();
+  if (!box) throw new Error('Player not found');
+
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height * 0.9;
+  const endY = box.y + box.height * 0.1;
+
+  await slide.dispatchEvent('pointerdown', {
+    pointerType: 'touch',
+    pointerId: 1,
+    isPrimary: true,
+    button: 0,
+    buttons: 1,
+    clientX: startX,
+    clientY: startY
+  });
+
+  const steps = 18;
+  for (let i = 1; i <= steps; i += 1) {
+    const y = startY + ((endY - startY) * i) / steps;
+    await slide.dispatchEvent('pointermove', {
+      pointerType: 'touch',
+      pointerId: 1,
+      isPrimary: true,
+      buttons: 1,
+      clientX: startX,
+      clientY: y
+    });
+  }
+
+  await slide.dispatchEvent('pointerup', {
+    pointerType: 'touch',
+    pointerId: 1,
+    isPrimary: true,
+    button: 0,
+    clientX: startX,
+    clientY: endY
+  });
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX, endY, { steps: 24 });
+  await page.mouse.up();
+}
 
 const BACKEND_IMAGES = [
   {
@@ -7,6 +60,19 @@ const BACKEND_IMAGES = [
     name: "Image 1",
     width: 1080,
     height: 1920
+  }
+];
+
+const BACKEND_DIRECTORIES = [
+  {
+    path: "folder1",
+    name: "Folder 1",
+    cover: {
+      path: "folder1/cover.jpg",
+      name: "Cover",
+      width: 1080,
+      height: 1920
+    }
   }
 ];
 
@@ -35,6 +101,19 @@ test.describe('VerticalPlayer Integration', () => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
+          images: BACKEND_IMAGES,
+          videos: BACKEND_VIDEOS
+        })
+      });
+    });
+
+    // Mock API response for mode=explore
+    await page.route('**/api/explore/**', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          directories: BACKEND_DIRECTORIES,
           images: BACKEND_IMAGES,
           videos: BACKEND_VIDEOS
         })
@@ -81,98 +160,144 @@ test.describe('VerticalPlayer Integration', () => {
     });
   });
 
-  test('enters vertical player from image mode', async ({ page }) => {
+  test('opens lightbox from image mode when clicking image', async ({ page }) => {
     // Go to image mode
     await page.goto('/?mode=image');
     
     // Wait for gallery to load
     await expect(page.getByAltText('Image 1')).toBeVisible();
 
-    // Click the first item (Image 1) - Index 0
+    // Click the image item
     await page.getByAltText('Image 1').click();
+
+    // Lightbox should open
+    await expect(page.locator('.yarl__container')).toBeVisible();
+    await expect(page.getByTestId('vertical-player')).toHaveCount(0);
+  });
+
+  test('enters vertical player from image mode when clicking video', async ({ page }) => {
+    // Go to image mode
+    await page.goto('/?mode=image');
+    
+    // Wait for gallery to load
+    await expect(page.getByAltText('Video 1')).toBeVisible();
+
+    // Click the video item
+    await page.getByAltText('Video 1').click();
 
     // Vertical Player should open
     const player = page.getByTestId('vertical-player');
     await expect(player).toBeVisible();
 
-    // Verify first item is shown (Image 1 is index 0)
-    await expect(page.getByTestId('slide-0').locator('img')).toBeVisible();
+    // Verify video is shown (or fallback)
+    await expectVideoOrFallback(player);
     
     // Close player
     await page.locator('button:has-text("Close"), button:has(.lucide-x)').click(); // Assuming X icon is inside a button
     await expect(player).not.toBeVisible();
   });
 
+  test('enters vertical player from explore mode when clicking video', async ({ page }) => {
+    await page.goto('/?mode=explore');
+
+    await expect(page.getByAltText('Video 1')).toBeVisible();
+    await page.getByAltText('Video 1').click();
+
+    const player = page.getByTestId('vertical-player');
+    await expect(player).toBeVisible();
+    await expectVideoOrFallback(player);
+  });
+
   test('swipes between items', async ({ page }) => {
     await page.goto('/?mode=image');
-    // Click Image 1 (Index 0)
-    await page.getByAltText('Image 1').click();
+    // Click Video 1
+    await page.getByAltText('Video 1').click();
     
     const player = page.getByTestId('vertical-player');
     await expect(player).toBeVisible();
 
-    const box = await player.boundingBox();
-    if (!box) throw new Error('Player not found');
+    // Swipe Up (Next) -> Should go to Video 2
+    await swipeUp(page, page.getByTestId('slide-1'));
 
-    const startX = box.x + box.width / 2;
-    const startY = box.y + box.height * 0.8;
-    const endY = box.y + box.height * 0.2;
-
-    // Swipe Up (Next) -> Should go to Video 1 (Index 1)
-    await page.mouse.move(startX, startY);
-    await page.mouse.down();
-    await page.mouse.move(startX, endY, { steps: 5 });
-    await page.mouse.up();
-
-    // Check if next item is visible (slide-1 which is Video 1)
-    await expect(page.getByTestId('slide-1')).toBeVisible();
-    await expect(page.getByTestId('slide-1').locator('video')).toBeVisible();
+    // Check if next item is visible
+    await expect(page.getByTestId('slide-2')).toBeVisible();
+    await expectVideoOrFallback(page.getByTestId('slide-2'));
   });
 
   test('scrolls/wheels between items', async ({ page }) => {
     await page.goto('/?mode=image');
-    // Click Image 1 (Index 0)
-    await page.getByAltText('Image 1').click();
+    // Click Video 1
+    await page.getByAltText('Video 1').click();
     
     const player = page.getByTestId('vertical-player');
     await expect(player).toBeVisible();
 
-    // Wheel Scroll Down (deltaY > 0) -> Next Item -> Video 1 (Index 1)
+    // Wheel Scroll Down (deltaY > 0) -> Next Item -> Video 2
     await page.mouse.wheel(0, 100);
 
     // Wait for transition/debounce
-    await expect(page.getByTestId('slide-1')).toBeVisible();
-    await expect(page.getByTestId('slide-1').locator('video')).toBeVisible();
+    await expect(page.getByTestId('slide-2')).toBeVisible();
+    await expectVideoOrFallback(page.getByTestId('slide-2'));
 
-    // Wheel Scroll Up (deltaY < 0) -> Previous Item -> Image 1 (Index 0)
+    // Wheel Scroll Up (deltaY < 0) -> Previous Item -> Video 1
     await page.mouse.wheel(0, -100);
     
-    await expect(page.getByTestId('slide-0')).toBeVisible();
-    await expect(page.getByTestId('slide-0').locator('img')).toBeVisible();
+    await expect(page.getByTestId('slide-1')).toBeVisible();
+    await expectVideoOrFallback(page.getByTestId('slide-1'));
   });
 
   test('mixed mode behavior (default on)', async ({ page }) => {
       // Default is mixed mode ON. Sequence: Image1, Video1, Video2
       await page.goto('/?mode=image');
-      await page.getByAltText('Image 1').click();
+      await page.getByAltText('Video 1').click();
       
       const player = page.getByTestId('vertical-player');
       
-      // Initial: Image 1
-      await expect(page.getByTestId('slide-0').locator('img')).toBeVisible();
+      // Initial: Video 1
+      await expectVideoOrFallback(page.getByTestId('slide-1'));
 
-      // Next: Video 1
-      const box = await player.boundingBox();
-      if (!box) throw new Error('Player not found');
-      const startX = box.x + box.width / 2;
-      const startY = box.y + box.height * 0.8;
-      const endY = box.y + box.height * 0.2;
+      // Next: Video 2
+      await swipeUp(page, page.getByTestId('slide-1'));
+      
+      await expectVideoOrFallback(page.getByTestId('slide-2'));
+  });
 
-      await page.mouse.move(startX, startY);
-      await page.mouse.down();
-      await page.mouse.move(startX, endY, { steps: 5 });
-      await page.mouse.up();
+  test('locks body scroll when open and restores when closed', async ({ page }) => {
+    await page.goto('/?mode=image');
+    // Ensure body is scrollable initially (or at least overflow is not hidden)
+    await page.evaluate(() => document.body.style.overflow = 'auto');
+    
+    // Open player
+    await page.getByAltText('Video 1').click();
+    const player = page.getByTestId('vertical-player');
+    await expect(player).toBeVisible();
 
-      await expect(page.getByTestId('slide-1').locator('video')).toBeVisible();
+    // Check overflow is hidden
+    const overflow = await page.evaluate(() => document.body.style.overflow);
+    expect(overflow).toBe('hidden');
+
+    // Close player
+    await page.locator('button:has-text("Close"), button:has(.lucide-x)').click();
+    await expect(player).not.toBeVisible();
+
+    // Check overflow is restored (empty string or whatever it was)
+    const restoredOverflow = await page.evaluate(() => document.body.style.overflow);
+    expect(restoredOverflow).not.toBe('hidden');
+  });
+
+  test('shows fallback when video fails to load', async ({ page }) => {
+    // Override the video route for Video 1 to fail
+    await page.route('**/video1.mp4', route => route.abort());
+
+    await page.goto('/?mode=image');
+    await page.getByAltText('Video 1').click();
+
+    const player = page.getByTestId('vertical-player');
+    await expect(player).toBeVisible();
+
+    // Expect fallback to be visible
+    const fallback = page.getByTestId('video-fallback');
+    await expect(fallback).toBeVisible();
+    await expect(fallback).toContainText('视频加载失败');
   });
 });

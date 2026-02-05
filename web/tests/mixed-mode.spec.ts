@@ -44,17 +44,19 @@ test('toggles mixed mode in shuffle settings', async ({ page }) => {
   // Check Modal Title
   await expect(page.getByText('Shuffle Mode')).toBeVisible()
 
-  // Check for Mixed Mode toggle
-  const toggle = page.getByTestId('mixed-mode-toggle')
+  // Check for Mixed Mode buttons
+  const mixedBtn = page.getByTestId('mixed-mode-mixed')
+  const isolatedBtn = page.getByTestId('mixed-mode-isolated')
   
-  // Verify default state (checked)
-  await expect(toggle).toBeVisible()
-  // Check using aria-checked
-  await expect(toggle).toHaveAttribute('aria-checked', 'true')
+  // Verify default state (Mixed is active)
+  await expect(mixedBtn).toBeVisible()
+  await expect(mixedBtn).toHaveAttribute('aria-pressed', 'true')
+  await expect(isolatedBtn).toHaveAttribute('aria-pressed', 'false')
 
-  // Toggle it off
-  await toggle.click()
-  await expect(toggle).toHaveAttribute('aria-checked', 'false')
+  // Switch to Isolated
+  await isolatedBtn.click()
+  await expect(mixedBtn).toHaveAttribute('aria-pressed', 'false')
+  await expect(isolatedBtn).toHaveAttribute('aria-pressed', 'true')
 
   // Reload to verify persistence
   await page.reload()
@@ -66,7 +68,7 @@ test('toggles mixed mode in shuffle settings', async ({ page }) => {
   await expect(settingsBtn).toBeVisible()
   await settingsBtn.click()
   
-  // Should still be unchecked
-  await expect(toggle).toBeVisible()
-  await expect(toggle).toHaveAttribute('aria-checked', 'false')
+  // Should still be Isolated
+  await expect(isolatedBtn).toBeVisible()
+  await expect(isolatedBtn).toHaveAttribute('aria-pressed', 'true')
 })
