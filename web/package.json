@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev:local": "PROXY_TARGET=local vite --host",
-    "dev:remote": "PROXY_TARGET=remote vite --host",
-    "dev": "npm run dev:local",
+    "dev": "vite --host",
+    "dev:local": "vite --host --mode local",
+    "dev:remote": "vite --host --mode remote",
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
