@@ -27,10 +27,9 @@ export default function RootLayout({ children }: RootLayoutProps) {
         setShuffleModalOpen(false);
     };
 
-    const handleToggleMixedMode = () => {
-        const newValue = !isMixedMode;
-        setIsMixedMode(newValue);
-        setMixedMode(newValue);
+    const handleSetMixedMode = (enabled: boolean) => {
+        setIsMixedMode(enabled);
+        setMixedMode(enabled);
     };
 
     return (
@@ -99,28 +98,36 @@ export default function RootLayout({ children }: RootLayoutProps) {
                         </div>
                     </div>
 
-                    <div className="pt-4 border-t border-white/10 flex items-center justify-between">
-                        <span className="text-sm text-white/70">Mixed Mode (Images + Videos)</span>
-                        <button
-                            type="button"
-                            role="switch"
-                            aria-checked={isMixedMode}
-                            data-testid="mixed-mode-toggle"
-                            onClick={handleToggleMixedMode}
-                            className={clsx(
-                                "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-white/75",
-                                isMixedMode ? "bg-white/90" : "bg-white/10"
-                            )}
-                        >
-                            <span className="sr-only">Toggle mixed mode</span>
-                            <span
-                                aria-hidden="true"
+                    <div className="space-y-3 pt-4 border-t border-white/10">
+                        <p className="text-sm text-white/70">
+                            Mixed Mode (Images + Videos)
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Button
+                                onClick={() => handleSetMixedMode(true)}
+                                variant="glass"
+                                data-testid="mixed-mode-mixed"
+                                aria-pressed={isMixedMode}
                                 className={clsx(
-                                    "pointer-events-none inline-block h-5 w-5 transform rounded-full shadow-lg ring-0 transition duration-200 ease-in-out",
-                                    isMixedMode ? "translate-x-5 bg-black/80" : "translate-x-0 bg-white"
+                                    "w-full justify-center rounded-2xl",
+                                    isMixedMode && "bg-white/20 border-white/30"
                                 )}
-                            />
-                        </button>
+                            >
+                                混合
+                            </Button>
+                            <Button
+                                onClick={() => handleSetMixedMode(false)}
+                                variant="glass"
+                                data-testid="mixed-mode-isolated"
+                                aria-pressed={!isMixedMode}
+                                className={clsx(
+                                    "w-full justify-center rounded-2xl",
+                                    !isMixedMode && "bg-white/20 border-white/30"
+                                )}
+                            >
+                                隔离
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </Modal>

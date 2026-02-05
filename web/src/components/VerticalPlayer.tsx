@@ -21,17 +21,27 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
   const [isPlaying, setIsPlaying] = useState(true);
   const [showControls, setShowControls] = useState(false);
   const [showMuteHint, setShowMuteHint] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastWheelTime = useRef(0);
 
   const currentItem = items[index];
 
-  // Reset mute hint when changing slides, but persist mute state?
-  // Actually, usually mute state is global for the session.
+  // Lock body scroll
+  useEffect(() => {
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalStyle;
+    };
+  }, []);
+
+  // Reset mute hint and error when changing slides
   // autoplay logic
   useEffect(() => {
     // Reset state for new slide
     setShowMuteHint(false);
+    setVideoError(false);
     setIsPlaying(true);
     
     // Logic handles in the render/video component usually, but let's do it here via ref
@@ -182,6 +192,22 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
           data-key={currentItem.key}
         >
           {currentItem.imageType === 'video' ? (
+            videoError ? (
+              <div className="w-full h-full flex flex-col items-center justify-center text-white" data-testid="video-fallback">
+                 {/* Fallback with poster if available */}
+                 {currentItem.src && (
+                    <img 
+                      src={currentItem.src} 
+                      alt={currentItem.name} 
+                      className="absolute inset-0 w-full h-full object-contain -z-10 opacity-50"
+                    />
+                 )}
+                 <div className="z-10 bg-black/50 p-4 rounded-lg flex flex-col items-center gap-2">
+                    <span className="text-lg font-medium">视频加载失败</span>
+                    <span className="text-sm opacity-70">无法播放此视频</span>
+                 </div>
+              </div>
+            ) : (
             <video
               ref={videoRef}
               src={currentItem.videoSrc || currentItem.src} // videoSrc is usually the video file
@@ -189,8 +215,14 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
               className="w-full h-full object-contain max-h-[100dvh]"
               playsInline
               loop
+              preload="metadata"
+              onError={() => {
+                console.error("Video load error", currentItem.videoSrc);
+                setVideoError(true);
+              }}
               // Muted/Autoplay handled in effect
             />
+            )
           ) : (
             <img
               src={currentItem.src}

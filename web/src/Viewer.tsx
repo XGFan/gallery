@@ -32,6 +32,8 @@ const GoIcon = createIcon("Go", <path
 export default function Viewer() {
   const fullAlbum = (useLoaderData() as AppCtx<Album>).data;
   const [index, setIndex] = useState(-1);
+  const [activePlayer, setActivePlayer] = useState<'vertical' | 'lightbox' | null>(null);
+  const [entryKey, setEntryKey] = useState<string | null>(null);
   const [rowHeight, setRowHeight] = useState(() => {
     //parse string to number
     const height: number = Number(localStorage.getItem("row-height"));
@@ -69,12 +71,15 @@ export default function Viewer() {
   }, [album.mode, fullAlbum.images, album.images]);
 
   const verticalPlayerData = useMemo(() => {
-    if (album.mode === 'image' && index >= 0 && album.images[index]) {
-      const entryKey = album.images[index].key;
-      return buildSwipeSequence(album.images, entryKey, getMixedMode());
+    if (activePlayer === 'vertical' && entryKey) {
+      const mediaItems = album.images.filter(item => item.imageType !== 'directory');
+      if (!mediaItems.length) {
+        return null;
+      }
+      return buildSwipeSequence(mediaItems, entryKey, getMixedMode());
     }
     return null;
-  }, [album.mode, index, album.images]);
+  }, [activePlayer, entryKey, album.images]);
 
   useEffect(() => {
     localStorage.setItem("row-height", String(rowHeight));
@@ -82,6 +87,8 @@ export default function Viewer() {
   useEffect(() => {
     console.log("full album has changed", fullAlbum)
     window.scrollTo(0, 0)
+    setActivePlayer(null)
+    setEntryKey(null)
     if (fullAlbum.mode == "random") {
       setAlbum(fullAlbum.subAlbum(0))
       setIndex(0)
@@ -137,14 +144,22 @@ export default function Viewer() {
       <VerticalPlayer
         items={verticalPlayerData.sequence}
         initialIndex={verticalPlayerData.initialIndex}
-        onClose={() => setIndex(-1)}
+        onClose={() => {
+          setIndex(-1)
+          setActivePlayer(null)
+          setEntryKey(null)
+        }}
       />
     )}
     <Lightbox
       slides={slides}
       index={index}
-      open={index >= 0 && !verticalPlayerData}
-      close={() => setIndex(-1)}
+      open={album.mode === 'random' ? index >= 0 : index >= 0 && activePlayer === 'lightbox'}
+      close={() => {
+        setIndex(-1)
+        setActivePlayer(null)
+        setEntryKey(null)
+      }}
       plugins={album.mode === 'random' ? RANDOM_PLUGINS : DEFAULT_PLUGINS}
       video={{ controls: true, playsInline: true, autoPlay: false }}
       toolbar={{
@@ -184,13 +199,27 @@ export default function Viewer() {
                 navigate(`/${photo.key}?mode=image`)
                 break;
               case 'image':
-                console.log("open image")
+                if (photo.imageType === 'video') {
+                  setActivePlayer('vertical')
+                  setEntryKey(photo.key)
+                } else {
+                  setActivePlayer('lightbox')
+                  setEntryKey(null)
+                }
                 setIndex(realIndex !== -1 ? realIndex : index);
                 break;
               case 'explore':
-                if (photo.imageType === 'image' || (photo.imageType === 'video' && photo.playable !== false)) {
+                if (photo.imageType === 'image') {
+                  setActivePlayer('lightbox')
+                  setEntryKey(null)
+                  setIndex(realIndex !== -1 ? realIndex : index);
+                } else if (photo.imageType === 'video' && photo.playable !== false) {
+                  setActivePlayer('vertical')
+                  setEntryKey(photo.key)
                   setIndex(realIndex !== -1 ? realIndex : index);
                 } else {
+                  setActivePlayer(null)
+                  setEntryKey(null)
                   navigate(`/${photo.key}?mode=explore`)
                 }
                 break;
