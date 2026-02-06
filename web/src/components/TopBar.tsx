@@ -239,6 +239,15 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
         { id: 'random', icon: Shuffle, label: 'Shuffle', hidden: false }
     ].filter(m => !m.hidden);
 
+    const orderedModes = (() => {
+        const modes = [...availableModes];
+        const currentIndex = modes.findIndex(mode => mode.id === currentMode);
+        if (currentIndex === -1) return modes;
+        const [current] = modes.splice(currentIndex, 1);
+        modes.push(current);
+        return modes;
+    })();
+
     // Determine which segments to show when expanded
     const getVisibleBreadcrumbs = () => {
         if (visibleSegmentCount === null || visibleSegmentCount >= breadcrumbs.length - 1) {
@@ -413,7 +422,7 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                 onMouseLeave={() => canHover && setSwitcherExpanded(false)}
                 onClick={() => !canHover && !isSwitcherExpanded && !isBreadcrumbExpanded && setSwitcherExpanded(true)}
             >
-                {availableModes.map((mode) => {
+                {orderedModes.map((mode) => {
                     if (!isSwitcherExpanded && currentMode !== mode.id) return null;
 
                     return (

@@ -34,6 +34,7 @@ export default function FileTree() {
   const album = (useLoaderData() as AppCtx<Album>).data;
   const [tree, setTree] = useState({ key: "", title: "" } as TreeNode);
   const [expanded, setExpanded] = useState<string[]>([]);
+  const [collapsedKeys, setCollapsedKeys] = useState<string[]>([]);
 
   // Compute required keys synchronously based on current album path
   const requiredKeys = useMemo(() => {
@@ -43,8 +44,8 @@ export default function FileTree() {
   // Effective expanded keys = user expanded + required keys (computed synchronously)
   const effectiveExpanded = useMemo(() => {
     const combined = new Set([...expanded, ...requiredKeys])
-    return Array.from(combined)
-  }, [expanded, requiredKeys]);
+    return Array.from(combined).filter(key => !collapsedKeys.includes(key))
+  }, [expanded, requiredKeys, collapsedKeys]);
 
   const selected = album.path.path;
 
@@ -72,10 +73,12 @@ export default function FileTree() {
       } else {
         // If clicking on the currently selected node, just toggle expand/collapse
         if (node.key === selected) {
-          if (expanded.includes(node.key)) {
+          if (effectiveExpanded.includes(node.key)) {
+            setCollapsedKeys(prev => prev.includes(node.key) ? prev : [...prev, node.key])
             setExpanded(expanded.filter(key => key !== node.key))
           } else {
-            setExpanded([...expanded, node.key])
+            setCollapsedKeys(prev => prev.filter(key => key !== node.key))
+            setExpanded(expanded.includes(node.key) ? expanded : [...expanded, node.key])
           }
           return
         }
@@ -83,6 +86,9 @@ export default function FileTree() {
         // For other non-leaf nodes: ensure it's expanded, then navigate
         if (!expanded.includes(node.key)) {
           setExpanded([...expanded, node.key])
+        }
+        if (collapsedKeys.includes(node.key)) {
+          setCollapsedKeys(collapsedKeys.filter(key => key !== node.key))
         }
         navigate(`/${node.key}?mode=album`)
       }
