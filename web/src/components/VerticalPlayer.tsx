@@ -3,6 +3,174 @@ import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { ImgData } from '../dto';
 import { X, Volume2, VolumeX, Play, Pause } from 'lucide-react';
 
+const formatTime = (time: number) => {
+  if (!time || isNaN(time)) return "0:00";
+  const m = Math.floor(time / 60);
+  const s = Math.floor(time % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
+interface VideoProgressBarProps {
+  videoRef: React.RefObject<HTMLVideoElement>;
+  progressCache: React.MutableRefObject<Record<string, number>>;
+  videoKey: string;
+}
+
+function VideoProgressBar({ videoRef, progressCache, videoKey }: VideoProgressBarProps) {
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const progressBarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.readyState >= 1) {
+      setDuration(video.duration);
+    }
+
+    const cachedTime = progressCache.current[videoKey] || 0;
+    setCurrentTime(cachedTime);
+
+    const handleTimeUpdate = () => {
+      if (!isDragging) {
+        setCurrentTime(video.currentTime);
+        progressCache.current[videoKey] = video.currentTime;
+      }
+    };
+
+    const handleLoadedMetadata = () => {
+      setDuration(video.duration);
+    };
+
+    video.addEventListener('timeupdate', handleTimeUpdate);
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    return () => {
+      video.removeEventListener('timeupdate', handleTimeUpdate);
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+    };
+  }, [isDragging, videoRef, progressCache, videoKey]);
+
+  const seekTo = (time: number) => {
+    setCurrentTime(time);
+    if (videoRef.current) {
+      videoRef.current.currentTime = time;
+      progressCache.current[videoKey] = time;
+    }
+  };
+
+  const handlePointerSeek = (e: React.PointerEvent<HTMLDivElement> | React.MouseEvent<HTMLDivElement>) => {
+    if (!progressBarRef.current) return;
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const percentage = x / rect.width;
+    return percentage * duration;
+  };
+
+  if (duration <= 0) return null;
+
+  return (
+    <div className="w-full max-w-md pointer-events-auto flex flex-col items-center">
+      <div className="flex justify-between w-full text-xs text-white/80 mb-2 font-mono drop-shadow-md">
+         <span>{formatTime(currentTime)}</span>
+         <span>{formatTime(duration)}</span>
+      </div>
+      <div
+        ref={progressBarRef}
+        className="w-full h-6 flex items-center cursor-pointer group"
+        role="slider"
+        tabIndex={0}
+        aria-valuenow={duration > 0 ? (currentTime / duration) * 100 : 0}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowRight') {
+            seekTo(Math.min(duration, currentTime + 5));
+          } else if (e.key === 'ArrowLeft') {
+            seekTo(Math.max(0, currentTime - 5));
+          }
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          const newTime = handlePointerSeek(e);
+          if (newTime !== undefined) seekTo(newTime);
+        }}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setIsDragging(true);
+          const newTime = handlePointerSeek(e);
+          if (newTime !== undefined) setCurrentTime(newTime);
+        }}
+        onPointerMove={(e) => {
+          if (isDragging) {
+            e.stopPropagation();
+            const newTime = handlePointerSeek(e);
+            if (newTime !== undefined) setCurrentTime(newTime);
+          }
+        }}
+        onPointerUp={(e) => {
+          e.stopPropagation();
+          e.currentTarget.releasePointerCapture(e.pointerId);
+          setIsDragging(false);
+          const newTime = handlePointerSeek(e);
+          if (newTime !== undefined) seekTo(newTime);
+        }}
+        onPointerCancel={(e) => {
+          e.stopPropagation();
+          e.currentTarget.releasePointerCapture(e.pointerId);
+          setIsDragging(false);
+        }}
+      >
+        <div className="w-full h-1.5 bg-white/30 rounded-full relative group-hover:h-2 transition-all shadow-sm pointer-events-none">
+          <div
+            className="absolute left-0 top-0 bottom-0 bg-white rounded-full"
+            style={{ width: `${(currentTime / duration) * 100}%` }}
+          >
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity translate-x-1/2 shadow-md" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface ThinProgressBarProps {
+  videoRef: React.RefObject<HTMLVideoElement>;
+}
+
+function ThinProgressBar({ videoRef }: ThinProgressBarProps) {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleTimeUpdate = () => {
+      if (video.duration > 0) {
+        setProgress((video.currentTime / video.duration) * 100);
+      }
+    };
+
+    video.addEventListener('timeupdate', handleTimeUpdate);
+    return () => {
+      video.removeEventListener('timeupdate', handleTimeUpdate);
+    };
+  }, [videoRef]);
+
+  if (progress <= 0) return null;
+
+  return (
+    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-white/20 z-40 pointer-events-none">
+      <div
+        className="h-full bg-white/70"
+        style={{ width: `${progress}%` }}
+      />
+    </div>
+  );
+}
+
 export interface VerticalPlayerProps {
   items: ImgData[];
   initialIndex: number;
@@ -11,12 +179,12 @@ export interface VerticalPlayerProps {
 
 const SWIPE_THRESHOLD = 100;
 const SWIPE_VELOCITY_THRESHOLD = 500;
-const WHEEL_THRESHOLD = 30; // Sensitive enough for trackpads
-const WHEEL_COOLDOWN = 500; // ms
+const WHEEL_THRESHOLD = 30;
+const WHEEL_COOLDOWN = 500;
 
 export default function VerticalPlayer({ items, initialIndex, onClose }: VerticalPlayerProps) {
   const [index, setIndex] = useState(initialIndex);
-  const [direction, setDirection] = useState(0); // 1 for next (swipe up), -1 for prev (swipe down)
+  const [direction, setDirection] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
   const [showControls, setShowControls] = useState(false);
@@ -24,10 +192,15 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
   const [videoError, setVideoError] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastWheelTime = useRef(0);
+  const progressCache = useRef<Record<string, number>>({});
+  const isMutedRef = useRef(isMuted);
 
   const currentItem = items[index];
 
-  // Lock body scroll
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
   useEffect(() => {
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
@@ -36,26 +209,23 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
     };
   }, []);
 
-  // Reset mute hint and error when changing slides
-  // autoplay logic
   useEffect(() => {
-    // Reset state for new slide
     setShowMuteHint(false);
     setVideoError(false);
     setIsPlaying(true);
-    
-    // Logic handles in the render/video component usually, but let's do it here via ref
+
     if (currentItem.imageType === 'video' && videoRef.current) {
         const video = videoRef.current;
-        video.muted = isMuted;
-        video.currentTime = 0; // Restart
-        
+        video.muted = isMutedRef.current;
+
+        const cachedTime = progressCache.current[currentItem.key] || 0;
+        video.currentTime = cachedTime;
+
         const playPromise = video.play();
         if (playPromise !== undefined) {
             playPromise.catch(error => {
                 console.warn("Autoplay failed", error);
-                // Fallback to muted
-                if (!isMuted) {
+                if (!isMutedRef.current) {
                     setIsMuted(true);
                     video.muted = true;
                     video.play().then(() => {
@@ -65,16 +235,14 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
             });
         }
     }
-  }, [index]); // Dependencies: index changed.
+  }, [currentItem.imageType, currentItem.key]);
 
-  // Also sync mute state if user toggles it
   useEffect(() => {
       if (videoRef.current) {
           videoRef.current.muted = isMuted;
       }
   }, [isMuted]);
 
-  // Sync play state
   useEffect(() => {
       if (videoRef.current) {
           if (isPlaying) videoRef.current.play().catch(() => {});
@@ -82,6 +250,11 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
       }
   }, [isPlaying]);
 
+  useEffect(() => {
+      if (currentItem.imageType !== 'video') {
+          videoRef.current = null;
+      }
+  }, [currentItem.imageType]);
 
   const paginate = useCallback((newDirection: number) => {
     setDirection(newDirection);
@@ -98,31 +271,27 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
     const swipeVelocity = velocity.y;
 
     if (swipe < -SWIPE_THRESHOLD || swipeVelocity < -SWIPE_VELOCITY_THRESHOLD) {
-      paginate(1); // Swipe up -> Next
+      paginate(1);
     } else if (swipe > SWIPE_THRESHOLD || swipeVelocity > SWIPE_VELOCITY_THRESHOLD) {
-      paginate(-1); // Swipe down -> Prev
+      paginate(-1);
     }
   };
 
-  const toggleMute = (e: React.MouseEvent) => {
+  const handleToggle = (e: React.MouseEvent | React.KeyboardEvent, action: 'mute' | 'play') => {
       e.stopPropagation();
-      setIsMuted(!isMuted);
-      setShowMuteHint(false);
+      if (action === 'mute') {
+          setIsMuted(prev => !prev);
+          setShowMuteHint(false);
+      } else {
+          setIsPlaying(prev => !prev);
+      }
   };
-  
-  const togglePlay = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      setIsPlaying(!isPlaying);
-  }
 
   const handleContentClick = () => {
       setShowControls(!showControls);
   };
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    // Prevent background scrolling propagation (though overscroll-behavior handles most)
-    // e.stopPropagation(); 
-
     const now = Date.now();
     if (now - lastWheelTime.current < WHEEL_COOLDOWN) return;
 
@@ -130,15 +299,14 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
 
     if (Math.abs(deltaY) > WHEEL_THRESHOLD) {
         if (deltaY > 0) {
-            paginate(1); // Scroll down -> Next
+            paginate(1);
         } else {
-            paginate(-1); // Scroll up -> Prev
+            paginate(-1);
         }
         lastWheelTime.current = now;
     }
   }, [paginate]);
 
-  // Variants for slide animation
   const variants = {
     enter: (direction: number) => ({
       y: direction > 0 ? '100%' : '-100%',
@@ -153,18 +321,24 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
     exit: (direction: number) => ({
       zIndex: 0,
       y: direction < 0 ? '100%' : '-100%',
-      opacity: 1 // Keep opacity to avoid seeing background
+      opacity: 1
     })
   };
 
   return (
-    <div 
-      className="fixed inset-0 bg-black z-50 overflow-hidden overscroll-contain" 
+    <div
+      className="fixed inset-0 bg-black z-50 overflow-hidden overscroll-contain"
       data-testid="vertical-player"
       onClick={handleContentClick}
       onWheel={handleWheel}
+      role="button"
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') handleContentClick();
+      }}
     >
-      <button 
+      <button
+        type="button"
         className="absolute top-4 right-4 z-50 p-2 text-white/80 hover:text-white bg-black/20 rounded-full"
         onClick={(e) => { e.stopPropagation(); onClose(); }}
       >
@@ -185,7 +359,7 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
           }}
           drag="y"
           dragConstraints={{ top: 0, bottom: 0 }}
-          dragElastic={0.2} // Resistance
+          dragElastic={0.2}
           onDragEnd={handleDragEnd}
           className="absolute inset-0 flex items-center justify-center w-full h-full"
           data-testid={`slide-${index}`}
@@ -194,11 +368,10 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
           {currentItem.imageType === 'video' ? (
             videoError ? (
               <div className="w-full h-full flex flex-col items-center justify-center text-white" data-testid="video-fallback">
-                 {/* Fallback with poster if available */}
                  {currentItem.src && (
-                    <img 
-                      src={currentItem.src} 
-                      alt={currentItem.name} 
+                    <img
+                      src={currentItem.src}
+                      alt={currentItem.name}
                       className="absolute inset-0 w-full h-full object-contain -z-10 opacity-50"
                     />
                  )}
@@ -209,9 +382,13 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
               </div>
             ) : (
             <video
-              ref={videoRef}
-              src={currentItem.videoSrc || currentItem.src} // videoSrc is usually the video file
-              poster={currentItem.src} // src is usually the poster/thumbnail in ImgData for videos? Wait, check utils.ts
+              ref={(el) => {
+                if (el) {
+                  videoRef.current = el;
+                }
+              }}
+              src={currentItem.videoSrc || currentItem.src}
+              poster={currentItem.src}
               className="w-full h-full object-contain max-h-[100dvh]"
               playsInline
               loop
@@ -220,7 +397,6 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
                 console.error("Video load error", currentItem.videoSrc);
                 setVideoError(true);
               }}
-              // Muted/Autoplay handled in effect
             />
             )
           ) : (
@@ -228,36 +404,57 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
               src={currentItem.src}
               alt={currentItem.name}
               className="w-full h-full object-contain max-h-[100dvh]"
-              draggable={false} // Prevent native drag
+              draggable={false}
             />
           )}
         </motion.div>
       </AnimatePresence>
 
-      {/* Controls Overlay */}
-      {showControls && (
-        <div className="absolute bottom-10 left-0 right-0 flex justify-center items-center gap-8 z-40 p-4 bg-gradient-to-t from-black/50 to-transparent">
-             <button onClick={toggleMute} className="p-3 bg-white/10 rounded-full backdrop-blur-sm text-white hover:bg-white/20 transition-colors">
-                 {isMuted ? <VolumeX /> : <Volume2 />}
-             </button>
-             <button onClick={togglePlay} className="p-3 bg-white/10 rounded-full backdrop-blur-sm text-white hover:bg-white/20 transition-colors">
-                 {isPlaying ? <Pause /> : <Play />}
-             </button>
-        </div>
+      <AnimatePresence>
+        {showControls && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-6 z-40 p-6 pb-12 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none"
+          >
+            {currentItem.imageType === 'video' && (
+              <VideoProgressBar
+                 videoRef={videoRef}
+                 progressCache={progressCache}
+                 videoKey={currentItem.key}
+              />
+            )}
+
+            <div className="flex justify-center items-center gap-12 pointer-events-auto mt-2">
+                 <button type="button" onClick={(e) => handleToggle(e, 'mute')} className="p-4 bg-white/10 rounded-full backdrop-blur-md text-white hover:bg-white/20 transition-colors shadow-lg">
+                     {isMuted ? <VolumeX size={28} /> : <Volume2 size={28} />}
+                 </button>
+                 <button type="button" onClick={(e) => handleToggle(e, 'play')} className="p-4 bg-white/10 rounded-full backdrop-blur-md text-white hover:bg-white/20 transition-colors shadow-lg">
+                     {isPlaying ? <Pause size={28} /> : <Play size={28} />}
+                 </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {!showControls && currentItem.imageType === 'video' && (
+        <ThinProgressBar videoRef={videoRef} />
       )}
 
-      {/* Mute Hint Toast */}
       {showMuteHint && (
-          <div 
+          <div
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 px-4 py-2 bg-black/60 text-white rounded-lg pointer-events-auto cursor-pointer flex items-center gap-2"
-            onClick={toggleMute}
+            onClick={(e) => handleToggle(e, 'mute')}
+            onKeyDown={(e) => e.key === 'Enter' && handleToggle(e, 'mute')}
+            role="button"
+            tabIndex={0}
           >
               <VolumeX size={16} />
               <span>点击开声</span>
           </div>
       )}
-      
-      {/* Index Indicator (optional, useful for debugging/tests) */}
+
       <div className="absolute top-4 left-4 z-40 text-white/50 text-xs">
           {index + 1} / {items.length}
       </div>

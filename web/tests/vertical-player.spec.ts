@@ -1,5 +1,4 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { ImgData } from '../src/dto'
 
 // Helper to check for video or fallback
 async function expectVideoOrFallback(locator: Locator) {
@@ -250,8 +249,6 @@ test.describe('VerticalPlayer Integration', () => {
       // Default is mixed mode ON. Sequence: Image1, Video1, Video2
       await page.goto('/?mode=image');
       await page.getByAltText('Video 1').click();
-      
-      const player = page.getByTestId('vertical-player');
       
       // Initial: Video 1
       await expectVideoOrFallback(page.getByTestId('slide-1'));
