@@ -190,7 +190,7 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
   const [showControls, setShowControls] = useState(false);
   const [showMuteHint, setShowMuteHint] = useState(false);
   const [videoError, setVideoError] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const lastWheelTime = useRef(0);
   const progressCache = useRef<Record<string, number>>({});
   const isMutedRef = useRef(isMuted);
