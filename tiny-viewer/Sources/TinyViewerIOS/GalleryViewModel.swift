@@ -11,6 +11,10 @@ public class GalleryViewModel: ObservableObject {
     
     public let config: ImageGalleryConfig
     private var prefetcher: ImagePrefetcher?
+
+    var imageFetcher: @Sendable (ImageGalleryConfig) async throws -> [ImageNode] = { config in
+        try await NetworkManager.shared.fetchImages(config: config)
+    }
     
     public var currentImage: ImageNode? {
         guard !images.isEmpty, currentIndex >= 0, currentIndex < images.count else { return nil }
@@ -26,7 +30,7 @@ public class GalleryViewModel: ObservableObject {
         error = nil
         
         do {
-            images = try await NetworkManager.shared.fetchImages(config: config)
+            images = try await imageFetcher(config)
             currentIndex = 0
             prefetchNearbyImages()
         } catch {
@@ -50,20 +54,24 @@ public class GalleryViewModel: ObservableObject {
         guard !images.isEmpty else { return }
         
         prefetcher?.stop()
-        
-        var urlsToPrefetch: [URL] = []
-        let range = -3...3
-        
-        for offset in range {
-            let index = (currentIndex + offset + images.count) % images.count
-            if index != currentIndex {
-                if let url = config.imageURL(for: images[index]) {
-                    urlsToPrefetch.append(url)
-                }
-            }
-        }
-        
+        let urlsToPrefetch = nearbyImageURLsForPrefetch()
         prefetcher = ImagePrefetcher(urls: urlsToPrefetch)
         prefetcher?.start()
+    }
+
+    func nearbyImageURLsForPrefetch() -> [URL] {
+        guard !images.isEmpty else { return [] }
+
+        var urlsToPrefetch: [URL] = []
+        let range = -3...3
+
+        for offset in range {
+            let index = (currentIndex + offset + images.count) % images.count
+            if index != currentIndex, let url = config.imageURL(for: images[index]) {
+                urlsToPrefetch.append(url)
+            }
+        }
+
+        return urlsToPrefetch
     }
 }

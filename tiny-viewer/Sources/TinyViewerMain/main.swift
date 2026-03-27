@@ -3,6 +3,39 @@ import SwiftUI
 import TinyViewerMacOS
 import TinyViewerCore
 
+func parseCategoryFromURLString(_ urlString: String) -> String {
+    // Remove scheme if present
+    var path = urlString
+    if path.hasPrefix("tinyviewer://") {
+        path = String(path.dropFirst("tinyviewer://".count))
+    }
+
+    // Decode URL components (handles %20, %E4%BD%A0 etc)
+    if let decoded = path.removingPercentEncoding {
+        path = decoded
+    }
+
+    // Clean up path
+    // 1. Remove query parameters if present
+    if let queryIndex = path.firstIndex(of: "?") {
+        path = String(path[..<queryIndex])
+    }
+
+    // 2. Remove leading/trailing slashes
+    path = path.trimmingCharacters(in: .init(charactersIn: "/"))
+
+    // 3. Handle specific "open?category=" case
+    if urlString.contains("category=") {
+        if let components = URLComponents(string: urlString),
+           let queryItem = components.queryItems?.first(where: { $0.name == "category" }),
+           let value = queryItem.value {
+            return value
+        }
+    }
+
+    return path
+}
+
 @main
 struct TinyViewerApp {
     static func main() {
@@ -78,36 +111,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     private func parseCategory(from urlString: String) -> String {
-        // Remove scheme if present
-        var path = urlString
-        if path.hasPrefix("tinyviewer://") {
-            path = String(path.dropFirst("tinyviewer://".count))
-        }
-        
-        // Decode URL components (handles %20, %E4%BD%A0 etc)
-        if let decoded = path.removingPercentEncoding {
-            path = decoded
-        }
-        
-        // Clean up path
-        // 1. Remove query parameters if present
-        if let queryIndex = path.firstIndex(of: "?") {
-            path = String(path[..<queryIndex])
-        }
-        
-        // 2. Remove leading/trailing slashes
-        path = path.trimmingCharacters(in: .init(charactersIn: "/"))
-        
-        // 3. Handle specific "open?category=" case
-        if urlString.contains("category=") {
-            if let components = URLComponents(string: urlString),
-               let queryItem = components.queryItems?.first(where: { $0.name == "category" }),
-               let value = queryItem.value {
-                return value
-            }
-        }
-        
-        return path
+        parseCategoryFromURLString(urlString)
     }
     
     func setupContentView() {

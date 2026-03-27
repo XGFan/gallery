@@ -50,6 +50,20 @@ public struct GalleryContentView: View {
 }
 
 @MainActor
+protocol SlideshowTimerControlling {
+    func invalidate()
+}
+
+@MainActor
+struct FoundationSlideshowTimer: SlideshowTimerControlling {
+    let timer: Timer
+
+    func invalidate() {
+        timer.invalidate()
+    }
+}
+
+@MainActor
 public class GalleryViewModel: ObservableObject {
     @Published public var images: [ImageNode] = []
     @Published public var currentIndex: Int = 0
@@ -59,8 +73,19 @@ public class GalleryViewModel: ObservableObject {
     
     public let config: ImageGalleryConfig
     private var prefetcher: ImagePrefetcher?
-    private var slideshowTimer: Timer?
+    private var slideshowTimer: (any SlideshowTimerControlling)?
     private let slideshowInterval: TimeInterval = 3.0
+
+    var imageFetcher: @Sendable (ImageGalleryConfig) async throws -> [ImageNode] = { config in
+        try await NetworkManager.shared.fetchImages(config: config)
+    }
+
+    var slideshowTimerFactory: (TimeInterval, @escaping @Sendable () -> Void) -> any SlideshowTimerControlling = { interval, handler in
+        let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
+            handler()
+        }
+        return FoundationSlideshowTimer(timer: timer)
+    }
     
     public var currentImage: ImageNode? {
         guard !images.isEmpty, currentIndex >= 0, currentIndex < images.count else { return nil }
@@ -76,7 +101,7 @@ public class GalleryViewModel: ObservableObject {
         error = nil
         
         do {
-            images = try await NetworkManager.shared.fetchImages(config: config)
+            images = try await imageFetcher(config)
             currentIndex = 0
             prefetchNearbyImages()
         } catch {
@@ -100,21 +125,25 @@ public class GalleryViewModel: ObservableObject {
         guard !images.isEmpty else { return }
         
         prefetcher?.stop()
-        
-        var urlsToPrefetch: [URL] = []
-        let range = -3...3
-        
-        for offset in range {
-            let index = (currentIndex + offset + images.count) % images.count
-            if index != currentIndex {
-                if let url = config.imageURL(for: images[index]) {
-                    urlsToPrefetch.append(url)
-                }
-            }
-        }
-        
+        let urlsToPrefetch = nearbyImageURLsForPrefetch()
         prefetcher = ImagePrefetcher(urls: urlsToPrefetch)
         prefetcher?.start()
+    }
+
+    func nearbyImageURLsForPrefetch() -> [URL] {
+        guard !images.isEmpty else { return [] }
+
+        var urlsToPrefetch: [URL] = []
+        let range = -3...3
+
+        for offset in range {
+            let index = (currentIndex + offset + images.count) % images.count
+            if index != currentIndex, let url = config.imageURL(for: images[index]) {
+                urlsToPrefetch.append(url)
+            }
+        }
+
+        return urlsToPrefetch
     }
     
     public func togglePlayback() {
@@ -128,7 +157,7 @@ public class GalleryViewModel: ObservableObject {
     
     private func startSlideshow() {
         stopSlideshow()
-        slideshowTimer = Timer.scheduledTimer(withTimeInterval: slideshowInterval, repeats: true) { [weak self] _ in
+        slideshowTimer = slideshowTimerFactory(slideshowInterval) { [weak self] in
             Task { @MainActor in
                 self?.nextImage()
             }

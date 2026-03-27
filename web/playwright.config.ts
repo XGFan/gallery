@@ -15,12 +15,12 @@ export default defineConfig({
     }
   ],
   use: {
-    baseURL: 'http://localhost:3000'
+    baseURL: 'http://localhost:5173'
   },
   webServer: {
-    command: 'npm run dev -- --host',
-    url: 'http://localhost:3000',
-    reuseExistingServer: true,
+    command: 'npm run dev -- --port 5173',
+    url: 'http://localhost:5173',
+    reuseExistingServer: false,
     timeout: 120000
   }
 })

@@ -2,21 +2,31 @@ import Foundation
 
 public final class NetworkManager: Sendable {
     public static let shared = NetworkManager()
+    private let session: URLSession
     
-    private init() {}
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
     
     public func fetchImages(config: ImageGalleryConfig) async throws -> [ImageNode] {
         guard let endpoint = config.apiEndpoint else {
             throw NetworkError.invalidResponse
         }
-        let (data, response) = try await URLSession.shared.data(from: endpoint)
+        let (data, response) = try await session.data(from: endpoint)
         
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
             throw NetworkError.invalidResponse
         }
         
-        var images = try JSONDecoder().decode([ImageNode].self, from: data)
+        let decodedImages: [ImageNode]
+        do {
+            decodedImages = try JSONDecoder().decode([ImageNode].self, from: data)
+        } catch is DecodingError {
+            throw NetworkError.decodingFailed
+        }
+
+        var images = decodedImages
         images.shuffle()
         return images
     }

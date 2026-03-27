@@ -78,6 +78,8 @@ test('renders disabled video card', async ({ page }) => {
 
   const videoCard = page.getByTestId('gallery-video-item')
   await expect(videoCard).toHaveCount(1)
-  await expect(videoCard).toHaveClass(/cursor-not-allowed/)
+  // Non-playable video shows visual opacity but remains fully actionable (cursor-pointer)
   await expect(videoCard).toHaveClass(/opacity-60/)
+  await expect(videoCard).toHaveClass(/cursor-pointer/)
+  await expect(videoCard).not.toHaveAttribute('aria-disabled')
 })

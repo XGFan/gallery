@@ -1,6 +1,9 @@
 import SwiftUI
-import UIKit
 import TinyViewerCore
+
+#if canImport(UIKit)
+import UIKit
+#endif
 
 public struct GalleryPageView: View {
     @ObservedObject var viewModel: GalleryViewModel
@@ -34,6 +37,8 @@ public struct GalleryPageView: View {
         }
     }
 }
+
+#if canImport(UIKit)
 
 struct PageViewController: UIViewControllerRepresentable {
     let images: [ImageNode]
@@ -206,6 +211,19 @@ struct PageViewController: UIViewControllerRepresentable {
         }
     }
 }
+#else
+public struct PageViewController: View {
+    let images: [ImageNode]
+    let config: ImageGalleryConfig
+    @Binding var currentIndex: Int
+
+    public var body: some View {
+        Text("Unsupported on this platform")
+    }
+}
+#endif
+
+#if canImport(UIKit)
 
 class ImageHostingController: UIViewController {
     let index: Int
@@ -238,3 +256,4 @@ class ImageHostingController: UIViewController {
         scrollView.loadImage(from: url)
     }
 }
+#endif

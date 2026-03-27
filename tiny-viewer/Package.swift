@@ -28,7 +28,6 @@ let package = Package(
                 .product(name: "Kingfisher", package: "Kingfisher")
             ]
         ),
-        
         .target(
             name: "TinyViewerMacOS",
             dependencies: [
@@ -36,7 +35,6 @@ let package = Package(
                 .product(name: "Kingfisher", package: "Kingfisher")
             ]
         ),
-        
         .target(
             name: "TinyViewerIOS",
             dependencies: [
@@ -44,10 +42,18 @@ let package = Package(
                 .product(name: "Kingfisher", package: "Kingfisher")
             ]
         ),
-        
         .executableTarget(
             name: "TinyViewerMain",
             dependencies: ["TinyViewerMacOS"]
+        ),
+        .testTarget(
+            name: "TinyViewerCoreTests",
+            dependencies: [
+                "TinyViewerCore",
+                "TinyViewerIOS",
+                "TinyViewerMacOS",
+                "TinyViewerMain"
+            ]
         ),
     ]
 )

@@ -241,12 +241,16 @@ export default function Viewer() {
         gap={4}
       />
     </InfiniteScroll>
-    {/* Bottom center counter */}
-    <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 transition-opacity duration-300 ${showCounter ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-      <div className="px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-white/80 text-sm shadow-lg">
+    <button
+      type="button"
+      onClick={() => setShowConfig(true)}
+      className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 transition-opacity duration-300 ${showCounter ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      aria-label="Open settings"
+    >
+      <div className="px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-white/80 text-sm shadow-lg hover:bg-black/50">
         {album.images.length} / {fullAlbum.images.length}
       </div>
-    </div>
+    </button>
     <Modal
       onClose={() => setShowConfig(false)}
       isOpen={showConfig}

@@ -1,7 +1,7 @@
 import axios from "axios";
 import { useEffect, useState, useMemo } from "react";
 import { useLoaderData, useNavigate } from "react-router-dom";
-import { Album, AppCtx } from "./dto";
+import { Album, AppCtx, customEncodeURI } from "./dto";
 import { Tree, TreeNode } from "./components/ui/Tree";
 
 function data2Tree(obj: object, parent: { title: string, key: string } | null): TreeNode {
@@ -38,7 +38,7 @@ export default function FileTree() {
 
   // Compute required keys synchronously based on current album path
   const requiredKeys = useMemo(() => {
-    return album.path.parents().map(it => it.path).reverse().concat(album.path.path)
+    return album.path.parents().map(it => customEncodeURI(it.path)).reverse().concat(customEncodeURI(album.path.path))
   }, [album.path]);
 
   // Effective expanded keys = user expanded + required keys (computed synchronously)
@@ -47,7 +47,7 @@ export default function FileTree() {
     return Array.from(combined).filter(key => !collapsedKeys.includes(key))
   }, [expanded, requiredKeys, collapsedKeys]);
 
-  const selected = album.path.path;
+  const selected = customEncodeURI(album.path.path);
 
   useEffect(() => {
     console.log("fetch tree")

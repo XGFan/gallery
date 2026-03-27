@@ -1,6 +1,9 @@
 import SwiftUI
-import UIKit
 import Kingfisher
+
+#if canImport(UIKit)
+import UIKit
+#endif
 
 public struct ZoomableImageView: View {
     let url: URL
@@ -13,6 +16,8 @@ public struct ZoomableImageView: View {
         ZoomableImageViewRepresentable(url: url)
     }
 }
+
+#if canImport(UIKit)
 
 struct ZoomableImageViewRepresentable: UIViewRepresentable {
     let url: URL
@@ -126,3 +131,12 @@ class ZoomableScrollView: UIScrollView, UIScrollViewDelegate {
         centerImage()
     }
 }
+#else
+struct ZoomableImageViewRepresentable: View {
+    let url: URL
+
+    var body: some View {
+        EmptyView()
+    }
+}
+#endif

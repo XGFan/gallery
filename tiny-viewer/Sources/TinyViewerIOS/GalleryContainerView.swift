@@ -14,17 +14,23 @@ public struct GalleryContainerView: View {
             .task {
                 await viewModel.loadImages()
             }
+            #if os(iOS)
             .statusBarHidden(true)
             .modifier(HideSystemOverlaysModifier())
+            #endif
     }
 }
 
 struct HideSystemOverlaysModifier: ViewModifier {
     func body(content: Content) -> some View {
+        #if os(iOS)
         if #available(iOS 16.0, *) {
             content.persistentSystemOverlays(.hidden)
         } else {
             content
         }
+        #else
+        content
+        #endif
     }
 }
