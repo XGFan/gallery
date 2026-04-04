@@ -37,7 +37,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
             {/* Sidebar Overlay Backdrop */}
             {isSidebarOpen && (
                 <div
-                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity"
+                    className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity"
                     onClick={() => setSidebarOpen(false)}
                 />
             )}

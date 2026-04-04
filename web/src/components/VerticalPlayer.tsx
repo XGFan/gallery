@@ -123,7 +123,7 @@ function VideoProgressBar({ videoRef, progressCache, videoKey }: VideoProgressBa
           setIsDragging(false);
         }}
       >
-        <div className="w-full h-1.5 bg-white/30 rounded-full relative group-hover:h-2 transition-all shadow-sm pointer-events-none">
+        <div className="w-full h-1.5 bg-white/30 rounded-full relative group-hover:h-2 transition-all shadow-xs pointer-events-none">
           <div
             className="absolute left-0 top-0 bottom-0 bg-white rounded-full"
             style={{ width: `${(currentTime / duration) * 100}%` }}

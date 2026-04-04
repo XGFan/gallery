@@ -35,7 +35,7 @@ export default function NavigationSidebar({ className, onOpenShuffleSettings }: 
                 </div>
             </div>
 
-            <div className="p-6 border-t border-white/10 text-[10px] tracking-[0.25em] font-bold text-white/40 uppercase select-none relative z-10 drop-shadow-sm flex items-center justify-center gap-3">
+            <div className="p-6 border-t border-white/10 text-[10px] tracking-[0.25em] font-bold text-white/40 uppercase select-none relative z-10 drop-shadow-xs flex items-center justify-center gap-3">
                 <button
                     onClick={onOpenShuffleSettings}
                     className="flex items-center justify-center w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all duration-300"

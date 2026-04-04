@@ -68,7 +68,7 @@ export const GalleryItem = memo(function GalleryItem({ item, size, onClick }: Ga
             {isVideo && (
                 <>
                     <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/20 transition-colors">
-                        <div className={`p-3 rounded-full bg-black/40 backdrop-blur-sm border border-white/20 text-white shadow-lg ${isPlayable ? 'group-hover:scale-110 transition-transform' : 'opacity-70'}`}>
+                        <div className={`p-3 rounded-full bg-black/40 backdrop-blur-xs border border-white/20 text-white shadow-lg ${isPlayable ? 'group-hover:scale-110 transition-transform' : 'opacity-70'}`}>
                             {isPlayable ? (
                                 <Play className="w-6 h-6 fill-white" aria-hidden="true" />
                             ) : (
@@ -98,7 +98,7 @@ export const GalleryItem = memo(function GalleryItem({ item, size, onClick }: Ga
 
             {/* Directory Overlay */}
             {item.imageType === 'directory' && (
-                <div className="absolute inset-x-0 bottom-0 p-2 bg-black/60 backdrop-blur-sm pointer-events-none">
+                <div className="absolute inset-x-0 bottom-0 p-2 bg-black/60 backdrop-blur-xs pointer-events-none">
                     <div className="flex items-center gap-1.5 text-white/90">
                         <FolderOpen className="w-3.5 h-3.5" aria-hidden="true" />
                         <span className="text-xs font-medium truncate leading-tight">{item.name}</span>

@@ -40,7 +40,7 @@ export function Tree({ treeData, expandedKeys = [], selectedKeys = [], onExpand,
                 <div
                     className={cn(
                         "flex items-center py-2 px-2 rounded-lg cursor-pointer transition-colors duration-200",
-                        isSelected ? "bg-white/20 text-white font-medium backdrop-blur-sm" : "hover:bg-white/10",
+                        isSelected ? "bg-white/20 text-white font-medium backdrop-blur-xs" : "hover:bg-white/10",
                         "active:scale-[0.98]"
                     )}
                     style={{ paddingLeft: `${level * 1.5 + 0.5}rem` }}
@@ -54,7 +54,7 @@ export function Tree({ treeData, expandedKeys = [], selectedKeys = [], onExpand,
                         onSelect?.(node.key, node)
                     }}
                 >
-                    <span className="mr-2 shrink-0 opacity-90 drop-shadow-sm">
+                    <span className="mr-2 shrink-0 opacity-90 drop-shadow-xs">
                         {node.isLeaf ? (
                             <File className="w-5 h-5 text-white/80" strokeWidth={2} />
                         ) : isExpanded ? (

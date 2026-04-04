@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,7 +16,7 @@ export default defineConfig(({ mode }) => {
   const proxy = JSON.parse(fs.readFileSync(proxyPath, 'utf-8'))
 
   return {
-    plugins: [react()],
+    plugins: [tailwindcss(), react()],
     server: {
       port: 3000,
       host: true,

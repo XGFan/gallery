@@ -30,7 +30,7 @@ export function Slider({ min, max, value, step = 1, onChange, className }: Slide
                 />
             </div>
             <div
-                className="block h-5 w-5 rounded-full border-2 border-white/50 bg-white ring-offset-black transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+                className="block h-5 w-5 rounded-full border-2 border-white/50 bg-white ring-offset-black transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
                 style={{
                     position: 'absolute',
                     left: `calc(${percentage}% - 10px)`
