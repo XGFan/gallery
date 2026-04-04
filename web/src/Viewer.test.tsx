@@ -55,7 +55,7 @@ vi.mock('yet-another-react-lightbox', () => ({
       <button type="button" onClick={on?.exiting} aria-label="Exit fullscreen">Exit Fullscreen</button>
     </div>
   ),
-  createIcon: (_name: string, _path: React.ReactNode) => () => null,
+  createIcon: () => () => null,
   IconButton: ({ label, onClick }: { label: string; onClick: () => void }) => (
     <button type="button" onClick={onClick} aria-label={label}>{label}</button>
   ),
