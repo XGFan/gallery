@@ -364,7 +364,13 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                                 // Show ellipsis only once at position 1
                                 if (idx === 1) {
                                     return (
-                                        <div key="ellipsis" className="flex items-center" ref={el => segmentRefs.current[idx] = el}>
+                                        <div
+                                            key="ellipsis"
+                                            className="flex items-center"
+                                            ref={el => {
+                                                segmentRefs.current[idx] = el;
+                                            }}
+                                        >
                                             <span className="text-white/30 px-1">...</span>
                                             <ChevronRight className="w-3.5 h-3.5 text-white/20 mx-0.5" />
                                         </div>
@@ -384,7 +390,9 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                                         "flex items-center min-w-0",
                                         isLast ? "flex-1 overflow-hidden" : "shrink-0 max-w-[120px] md:max-w-[160px]"
                                     )}
-                                    ref={el => segmentRefs.current[idx] = el}
+                                    ref={el => {
+                                        segmentRefs.current[idx] = el;
+                                    }}
                                 >
                                     <button
                                         onClick={(e) => {

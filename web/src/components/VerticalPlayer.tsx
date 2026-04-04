@@ -11,7 +11,7 @@ const formatTime = (time: number) => {
 };
 
 interface VideoProgressBarProps {
-  videoRef: React.RefObject<HTMLVideoElement>;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
   progressCache: React.MutableRefObject<Record<string, number>>;
   videoKey: string;
 }
@@ -137,7 +137,7 @@ function VideoProgressBar({ videoRef, progressCache, videoKey }: VideoProgressBa
 }
 
 interface ThinProgressBarProps {
-  videoRef: React.RefObject<HTMLVideoElement>;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
 }
 
 function ThinProgressBar({ videoRef }: ThinProgressBarProps) {
