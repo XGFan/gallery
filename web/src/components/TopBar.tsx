@@ -83,6 +83,10 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
         const handleScroll = () => {
             const currentScrollY = container.scrollY;
 
+            // Auto-collapse expanded breadcrumb/switcher on any scroll (mobile touch recovery)
+            setBreadcrumbExpanded(false);
+            setSwitcherExpanded(false);
+
             // Show when at top or scrolling up
             if (currentScrollY < 10 || currentScrollY < lastScrollY.current) {
                 setIsVisible(true);
