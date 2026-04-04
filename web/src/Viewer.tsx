@@ -124,7 +124,7 @@ export default function Viewer() {
   function GoToDirectory() {
     const { currentSlide } = useLightboxState();
     return (
-      <IconButton label="Location" icon={GoIcon} onClick={() => {
+      <IconButton label="Photo gallery" icon={GoIcon} onClick={() => {
         if (currentSlide) {
           // eslint-disable-next-line
           const key: string = (currentSlide as any).key
