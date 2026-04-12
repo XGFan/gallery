@@ -24,7 +24,7 @@ jobs:
           KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
         run: |
           echo "${KUBECONFIG_DATA}" > /tmp/kubeconfig
-          chmod 600 /tmp/kubeconfig
+          chmod 644 /tmp/kubeconfig
           docker run --rm \
             -v /tmp/kubeconfig:/tmp/kubeconfig \
             -e KUBECONFIG=/tmp/kubeconfig \
