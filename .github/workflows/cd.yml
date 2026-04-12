@@ -1,0 +1,55 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Set image tag
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: echo "TAG=${HEAD_SHA::8}" >> "$GITHUB_ENV"
+
+      - name: Deploy to Kubernetes
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: |
+          echo "${KUBECONFIG_DATA}" > /tmp/kubeconfig
+          chmod 600 /tmp/kubeconfig
+          docker run --rm \
+            -v /tmp/kubeconfig:/tmp/kubeconfig \
+            -e KUBECONFIG=/tmp/kubeconfig \
+            bitnami/kubectl:latest \
+            set image deployment/gallery gallery=docker.test4x.com/xgfan/gallery:${{ env.TAG }}
+          rm -f /tmp/kubeconfig
+
+  notify:
+    runs-on: self-hosted
+    needs: [deploy]
+    if: always()
+    steps:
+      - name: Bark notification
+        env:
+          BARK_TOKEN: ${{ secrets.BARK_TOKEN }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}
+          REPO: ${{ github.repository }}
+        run: |
+          BODY=$(echo "$COMMIT_MSG" | head -1)
+          jq -n \
+            --arg key "$BARK_TOKEN" \
+            --arg title "$REPO $DEPLOY_RESULT" \
+            --arg body "$BODY" \
+            '{device_key: $key, title: $title, body: $body}' | \
+          curl -sf -X POST "https://api.day.app/push" \
+            -H "Content-Type: application/json" \
+            -d @-
