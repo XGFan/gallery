@@ -5,6 +5,9 @@ on:
     workflows: [CI]
     types: [completed]
 
+permissions:
+  contents: read
+
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -30,7 +33,10 @@ jobs:
             -e KUBECONFIG=/tmp/kubeconfig \
             bitnami/kubectl:latest \
             set image deployment/gallery gallery=docker.test4x.com/xgfan/gallery:${{ env.TAG }}
-          rm -f /tmp/kubeconfig
+
+      - name: Cleanup kubeconfig
+        if: always()
+        run: rm -f /tmp/kubeconfig
 
   notify:
     runs-on: self-hosted
@@ -38,6 +44,7 @@ jobs:
     if: always()
     steps:
       - name: Bark notification
+        if: env.BARK_TOKEN != ''
         env:
           BARK_TOKEN: ${{ secrets.BARK_TOKEN }}
           DEPLOY_RESULT: ${{ needs.deploy.result }}
