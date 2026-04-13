@@ -1,0 +1,44 @@
+when:
+  branch: master
+  event: push
+
+steps:
+  - name: build
+    image: plugins/docker
+    settings:
+      repo: docker.test4x.com/xgfan/gallery
+      registry: docker.test4x.com
+      mirror: https://docker-proxy.test4x.com
+      tags:
+        - "${CI_COMMIT_SHA:0:8}"
+        - latest
+      mtu: 1450
+      username:
+        from_secret: docker_username
+      password:
+        from_secret: docker_password
+
+  - name: deploy
+    image: bitnami/kubectl:latest
+    commands:
+      - echo "$KUBECONFIG_DATA" > /tmp/kubeconfig
+      - export KUBECONFIG=/tmp/kubeconfig
+      - kubectl set image deployment/gallery gallery=docker.test4x.com/xgfan/gallery:$(echo $CI_COMMIT_SHA | cut -c1-8) -n default
+      - rm -f /tmp/kubeconfig
+    environment:
+      KUBECONFIG_DATA:
+        from_secret: kubeconfig
+
+  - name: notify
+    image: curlimages/curl
+    failure: ignore
+    commands:
+      - |
+        TITLE=$(echo "${CI_REPO} ${CI_PIPELINE_STATUS}" | tr ' ' '+')
+        BODY=$(echo "${CI_COMMIT_MESSAGE}" | head -1 | tr ' ' '+')
+        curl -sf "https://api.day.app/${BARK_TOKEN}/${TITLE}/${BODY}" || true
+    environment:
+      BARK_TOKEN:
+        from_secret: bark_token
+    when:
+      - status: [success, failure]
