@@ -4,15 +4,17 @@ when:
 
 steps:
   - name: build
-    image: plugins/docker
+    image: docker.test4x.com/xgfan/plugin-docker-buildx-check
     settings:
       repo: docker.test4x.com/xgfan/gallery
       registry: docker.test4x.com
-      mirror: https://docker-proxy.test4x.com
+      mirror: https://docker.test4x.com
       tags:
         - "${CI_COMMIT_SHA:0:8}"
         - latest
       mtu: 1450
+      cache_from: docker.test4x.com/xgfan/gallery:cache
+      cache_to: docker.test4x.com/xgfan/gallery:cache
       username:
         from_secret: docker_username
       password:
