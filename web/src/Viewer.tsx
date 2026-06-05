@@ -13,6 +13,7 @@ import { Slider } from "./components/ui/Slider";
 import { GalleryItem } from "./components/GalleryItem";
 import VerticalPlayer from "./components/VerticalPlayer";
 import { buildSwipeSequence, getMixedMode } from "./utils";
+import { usePinchZoom } from "./hooks/usePinchZoom";
 
 const DEFAULT_PLUGINS = [
   Fullscreen,
@@ -23,6 +24,8 @@ const DEFAULT_PLUGINS = [
 const RANDOM_PLUGINS = [Fullscreen, Slideshow, Zoom, Video]
 
 const DEFAULT_ROW_HEIGHT = 500
+const ROW_HEIGHT_MIN = 250
+const ROW_HEIGHT_MAX = 1000
 
 const GoIcon = createIcon("Go", <path
   d="M 17.92 4.288 a 2.312 2.312 90 0 0 -2.4 -0.568 L 4.2 7.504 a 2.32 2.32 90 0 0 -0.096 4.376 l 4.192 1.6 h 0 a 0.744 0.744 90 0 1 0.424 0.416 l 1.6 4.2 A 2.296 2.296 90 0 0 12.488 19.6 h 0.056 a 2.304 2.304 90 0 0 2.152 -1.6 L 18.48 6.664 A 2.312 2.312 90 0 0 17.92 4.288 Z M 17 6.16 L 13.176 17.504 a 0.704 0.704 90 0 1 -0.672 0.496 a 0.736 0.736 90 0 1 -0.696 -0.464 l -1.6 -4.2 a 2.328 2.328 90 0 0 -1.336 -1.344 l -4.2 -1.6 A 0.72 0.72 90 0 1 4.2 9.696 a 0.704 0.704 90 0 1 0.496 -0.672 L 16.04 5.24 A 0.728 0.728 90 0 1 17 6.16 Z" />);
@@ -84,6 +87,18 @@ export default function Viewer() {
   useEffect(() => {
     localStorage.setItem("row-height", String(rowHeight));
   }, [rowHeight])
+
+  // Pinch (touch) or ctrl/⌘ + wheel (trackpad) to resize the image wall.
+  // Disabled while an overlay is open so the lightbox/player owns its own zoom
+  // gestures instead of resizing the wall behind it.
+  const overlayOpen = activePlayer !== null || (album.mode === 'random' && index >= 0);
+  usePinchZoom({
+    value: rowHeight,
+    setValue: setRowHeight,
+    min: ROW_HEIGHT_MIN,
+    max: ROW_HEIGHT_MAX,
+    enabled: !overlayOpen,
+  });
   useEffect(() => {
     console.log("full album has changed", fullAlbum)
     window.scrollTo(0, 0)
@@ -262,8 +277,8 @@ export default function Viewer() {
         </div>
         <div>
           <Slider
-            min={250}
-            max={1000}
+            min={ROW_HEIGHT_MIN}
+            max={ROW_HEIGHT_MAX}
             onChange={setRowHeight}
             value={rowHeight}
             step={50}
