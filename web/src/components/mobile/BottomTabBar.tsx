@@ -12,6 +12,12 @@ interface BottomTabBarProps {
 // Mode switching lives on the bottom edge as a thumb-reachable tab bar: a single
 // tap switches mode, and it shares the top bar's scroll-aware visibility so both
 // slide away while browsing (full-screen wall) and return at rest / scroll-up.
+//
+// Layout follows iOS Photos' segmented switcher: each tab stacks its icon over a
+// label, and the active tab gets a soft highlight pill in the accent colour.
+// Stacking is also the most width-efficient way to label four tabs on a phone —
+// the label width (not icon+label) sets the tab width, so all four fit a 375px
+// viewport without truncation.
 export default function BottomTabBar({ modes, currentMode, isVisible, onSelect }: BottomTabBarProps) {
   // Nothing to switch between → don't occupy the bottom edge at all.
   if (modes.length <= 1) return null;
@@ -24,7 +30,7 @@ export default function BottomTabBar({ modes, currentMode, isVisible, onSelect }
         !isVisible && "bottombar-hidden",
       )}
     >
-      <div className="flex items-center gap-1 bg-glass-liquid backdrop-blur-lg border border-white/20 rounded-full p-1.5 shadow-[0_4px_24px_rgba(0,0,0,0.35)] ring-1 ring-white/10 pointer-events-auto">
+      <div className="flex items-center gap-2 bg-glass-liquid backdrop-blur-lg border border-white/20 rounded-full p-2 shadow-[0_4px_24px_rgba(0,0,0,0.35)] ring-1 ring-white/10 pointer-events-auto max-w-[calc(100vw-1rem)]">
         {modes.map((mode) => {
           const active = mode.id === currentMode;
           return (
@@ -35,14 +41,14 @@ export default function BottomTabBar({ modes, currentMode, isVisible, onSelect }
               aria-label={mode.label}
               aria-current={active ? "true" : undefined}
               className={clsx(
-                "flex flex-col items-center justify-center gap-0.5 rounded-full px-4 py-2 min-w-[60px] transition-colors duration-300",
+                "flex flex-col items-center justify-center gap-1 rounded-full px-3 py-2 min-w-[76px] transition-colors duration-300",
                 active
-                  ? "bg-white/15 text-white shadow-inner border border-white/10"
-                  : "text-white/50 hover:text-white/80 active:bg-white/10",
+                  ? "bg-white/15 text-accent"
+                  : "text-white/55 hover:text-white/90",
               )}
             >
-              <mode.icon className="w-5 h-5" strokeWidth={active ? 2.25 : 1.75} />
-              <span className="text-[10px] font-medium leading-none">{mode.label}</span>
+              <mode.icon className="w-6 h-6" strokeWidth={2} />
+              <span className="text-[11px] font-semibold leading-none">{mode.label}</span>
             </button>
           );
         })}

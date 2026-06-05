@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLoaderData } from "react-router-dom";
 import { Album, AppCtx, Mode } from "../../dto";
 import { useGalleryNav } from "../../hooks/useGalleryNav";
-import { useChromeVisibility } from "../../hooks/useChromeVisibility";
+import { useScrollIntent } from "../../hooks/useScrollIntent";
 import MobileTopBar from "./MobileTopBar";
 import BottomTabBar from "./BottomTabBar";
 import PathSheet from "./PathSheet";
@@ -13,14 +13,18 @@ interface MobileNavProps {
 }
 
 // Composes the mobile navigation: a minimal top bar (drawer + path title), a
-// bottom Path Sheet for ancestry jumps, and an auto-hiding bottom tab bar for
-// mode switching. Top and bottom chrome share one scroll-visibility signal so
-// they hide/show together; scrolling also dismisses the path sheet.
+// bottom Path Sheet for ancestry jumps, and a bottom tab bar for mode switching.
+//
+// Chrome visibility is mutually exclusive with the gallery's loading counter
+// (which shows while scrolling *down*): the nav appears on scroll-up or at the
+// top of the page, and hides while scrolling down or sitting idle in the content
+// — so the counter and the tab bar never share the bottom edge.
 export default function MobileNav({ isSidebarOpen, onSidebarToggle }: MobileNavProps) {
   const { data: album } = useLoaderData() as AppCtx<Album>;
   const { breadcrumbs, availableModes, currentMode, isLeaf, changeMode, navigateToPath } = useGalleryNav(album);
   const [isPathOpen, setPathOpen] = useState(false);
-  const isVisible = useChromeVisibility(() => setPathOpen(false));
+  const { direction, atTop } = useScrollIntent();
+  const chromeVisible = atTop || direction === "up";
 
   // Safety net mirroring the desktop TopBar: landing on a leaf folder in a
   // directory-oriented mode falls back to the photo view.
@@ -30,6 +34,11 @@ export default function MobileNav({ isSidebarOpen, onSidebarToggle }: MobileNavP
     }
   }, [isLeaf, currentMode, changeMode]);
 
+  // Any real scroll dismisses the path sheet.
+  useEffect(() => {
+    if (direction === "up" || direction === "down") setPathOpen(false);
+  }, [direction]);
+
   const handleSelect = (mode: Mode) => {
     if (mode !== currentMode) changeMode(mode);
   };
@@ -38,7 +47,7 @@ export default function MobileNav({ isSidebarOpen, onSidebarToggle }: MobileNavP
     <>
       <MobileTopBar
         breadcrumbs={breadcrumbs}
-        isVisible={isVisible}
+        isVisible={chromeVisible}
         isSidebarOpen={isSidebarOpen}
         onSidebarToggle={onSidebarToggle}
         onOpenPath={() => setPathOpen(true)}
@@ -54,7 +63,7 @@ export default function MobileNav({ isSidebarOpen, onSidebarToggle }: MobileNavP
       <BottomTabBar
         modes={availableModes}
         currentMode={currentMode}
-        isVisible={isVisible}
+        isVisible={chromeVisible}
         onSelect={handleSelect}
       />
     </>

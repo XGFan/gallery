@@ -14,7 +14,8 @@ test.beforeEach(async ({ page }) => {
     const url = route.request().url()
     if (url.includes('/api/media')) {
       const images = [
-        ...Array.from({ length: 6 }, (_, i) => ({
+        // Enough images that the wall is taller than the viewport (scrollable).
+        ...Array.from({ length: 30 }, (_, i) => ({
           name: `img${i}`,
           path: `${DEEP}/img${i}.jpg`,
           width: 800,
@@ -33,7 +34,16 @@ test.beforeEach(async ({ page }) => {
         ]),
       })
     } else if (url.includes('/api/explore')) {
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ images: [], videos: [], directories: [] }) })
+      // A subdirectory keeps explore non-leaf, so selecting Explore stays in
+      // explore mode rather than auto-redirecting to photos on an empty folder.
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          images: [],
+          videos: [],
+          directories: [{ name: 'sub', path: `${DEEP}/sub`, cover: { name: 'c', path: `${DEEP}/sub/c.jpg`, width: 100, height: 100 } }],
+        }),
+      })
     } else {
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify({}) })
     }
@@ -84,4 +94,32 @@ test('no horizontal scrollbar on a phone viewport', async ({ page }) => {
   })
 
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth)
+})
+
+test('the counter and the bottom tab bar are mutually exclusive across scroll', async ({ page }) => {
+  await page.goto(`/${DEEP}?mode=image`)
+  const tabbar = page.getByRole('navigation', { name: 'View mode' })
+  const counter = page.getByRole('button', { name: 'Open settings' })
+  const counterOpacity = () => counter.evaluate(el => getComputedStyle(el).opacity)
+  await expect(tabbar).toBeVisible()
+
+  // At the top: nav reachable, counter hidden.
+  await expect(tabbar).toBeInViewport()
+  expect(await counterOpacity()).toBe('0')
+
+  // Scroll down → counter (loading progress) appears, nav slides away.
+  await page.mouse.move(195, 420)
+  await page.mouse.wheel(0, 500)
+  await expect(tabbar).not.toBeInViewport()
+  await expect.poll(counterOpacity).toBe('1')
+
+  // Idle in the content → both hidden (clean wall).
+  await page.waitForTimeout(1800)
+  await expect(tabbar).not.toBeInViewport()
+  await expect.poll(counterOpacity).toBe('0')
+
+  // Scroll up → nav returns, counter stays hidden.
+  await page.mouse.wheel(0, -300)
+  await expect(tabbar).toBeInViewport()
+  expect(await counterOpacity()).toBe('0')
 })

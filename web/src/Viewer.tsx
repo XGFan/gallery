@@ -14,6 +14,8 @@ import { GalleryItem } from "./components/GalleryItem";
 import VerticalPlayer from "./components/VerticalPlayer";
 import { buildSwipeSequence, getMixedMode } from "./utils";
 import { usePinchZoom, clamp } from "./hooks/usePinchZoom";
+import { useIsMobile } from "./hooks/useIsMobile";
+import { useScrollIntent } from "./hooks/useScrollIntent";
 import { averageAspect, calColumns, columnsToRowHeight, getColumnLimits } from "./gridLayout";
 
 const DEFAULT_PLUGINS = [
@@ -50,6 +52,13 @@ export default function Viewer() {
   const [album, setAlbum] = useState(fullAlbum.subAlbum(DEFAULT_PAGE_SIZE))
   const [showConfig, setShowConfig] = useState(false)
   const [showCounter, setShowCounter] = useState(true)
+  const isMobile = useIsMobile();
+  const scroll = useScrollIntent();
+  // Mobile: the counter is mutually exclusive with the bottom nav bar — it only
+  // shows while actively scrolling down through the wall (loading progress), and
+  // hides on scroll-up / idle / at-top. Desktop keeps the legacy behaviour
+  // (show on any scroll, hide after 3s).
+  const counterVisible = isMobile ? (!scroll.atTop && scroll.direction === "down") : showCounter;
   const navigate = useNavigate();
 
   const slides = useMemo(() => {
@@ -297,7 +306,7 @@ export default function Viewer() {
     <button
       type="button"
       onClick={() => setShowConfig(true)}
-      className={`fixed counter-safe left-1/2 -translate-x-1/2 z-50 transition-opacity duration-300 ${showCounter ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      className={`fixed counter-safe z-50 transition-opacity duration-300 ${counterVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       aria-label="Open settings"
     >
       <div className="px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-white/80 text-sm shadow-lg hover:bg-black/50">

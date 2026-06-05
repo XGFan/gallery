@@ -98,15 +98,19 @@ body {
   opacity: 0;
 }
 
-/* Floating count/settings pill: lifts above the bottom tab bar on mobile so the
-   two never overlap; unchanged on desktop. */
+/* Floating count/settings pill, bottom-centred. On mobile it shares the bottom
+   edge with the tab bar but never overlaps it: the two are mutually exclusive
+   (counter shows only while scrolling down; nav only on scroll-up / at top).
+   Centring is owned here, not via Tailwind utilities on the element. */
 .counter-safe {
+  left: 50%;
   bottom: 1rem;
+  transform: translateX(-50%);
 }
 
 @media (max-width: 767px) {
   .counter-safe {
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 5.25rem);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
   }
 }
 
