@@ -51,9 +51,9 @@
 body {
   margin: 0;
   padding: 0;
-  /* Use 100% (not 100vw): 100vw includes the vertical scrollbar gutter, so with a
-     classic scrollbar (::-webkit-scrollbar below is 6px wide) the body becomes
-     wider than the visible area and produces a spurious horizontal scrollbar. */
+  /* Use 100% (not 100vw): 100vw includes the scrollbar gutter and would produce a
+     spurious horizontal scrollbar whenever a classic vertical scrollbar appears.
+     100% tracks the html content width and is safe under overlay scrollbars too. */
   width: 100%;
   height: 100vh;
   overflow: auto;
@@ -68,24 +68,10 @@ body {
   background-size: cover;
 }
 
-/* Custom Scrollbar for Webkit */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
+/* No global ::-webkit-scrollbar styling: defining a width forces a classic,
+   space-occupying scrollbar. We intentionally leave the page scrollbar to the
+   OS (overlay on macOS), so it doesn't take layout width — matching avp.
+   Use the opt-in .custom-scrollbar class for elements that want a thin bar. */
 
 .custom-scrollbar {
   scrollbar-width: thin;
