@@ -14,6 +14,7 @@
   --animate-slide-up: slideUp 0.5s ease-out;
   --animate-slide-in-from-left: slideInFromLeft 0.3s ease-out;
   --animate-slide-in-from-right: slideInFromRight 0.3s ease-out;
+  --animate-sheet-up: sheetUp 0.32s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @keyframes fadeIn {
@@ -31,6 +32,10 @@
 @keyframes slideInFromRight {
   0% { transform: translateX(100%); }
   100% { transform: translateX(0); }
+}
+@keyframes sheetUp {
+  0% { transform: translateY(100%); }
+  100% { transform: translateY(0); }
 }
 
 :root {
@@ -80,6 +85,29 @@ body {
 
 .topbar-safe {
   top: calc(env(safe-area-inset-top, 0px) + 1rem);
+}
+
+/* Mobile bottom tab bar: sit above the Home indicator, slide out of view when
+   chrome is hidden (scroll-down). */
+.bottombar-safe {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+}
+
+.bottombar-safe.bottombar-hidden {
+  transform: translateY(calc(100% + env(safe-area-inset-bottom, 0px) + 1.5rem));
+  opacity: 0;
+}
+
+/* Floating count/settings pill: lifts above the bottom tab bar on mobile so the
+   two never overlap; unchanged on desktop. */
+.counter-safe {
+  bottom: 1rem;
+}
+
+@media (max-width: 767px) {
+  .counter-safe {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 5.25rem);
+  }
 }
 
 .topbar-safe.topbar-hidden {

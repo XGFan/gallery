@@ -2,6 +2,8 @@ import { useState, ReactNode } from "react";
 import clsx from "clsx";
 import NavigationSidebar from "../components/NavigationSidebar";
 import TopBar from "../components/TopBar";
+import MobileNav from "../components/mobile/MobileNav";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { Modal } from "../components/ui/Modal";
 import { Button } from "../components/ui/Button";
 import { getShuffleOpenMode, setShuffleOpenMode, ShuffleOpenMode, getMixedMode, setMixedMode } from "../utils";
@@ -11,6 +13,7 @@ interface RootLayoutProps {
 }
 
 export default function RootLayout({ children }: RootLayoutProps) {
+    const isMobile = useIsMobile();
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [isShuffleModalOpen, setShuffleModalOpen] = useState(false);
     const [shuffleOpenMode, setShuffleOpenModeState] = useState<ShuffleOpenMode>(() => getShuffleOpenMode());
@@ -55,11 +58,19 @@ export default function RootLayout({ children }: RootLayoutProps) {
 
             {/* Main Content Area */}
             <main className="flex-1 flex flex-col relative w-full h-full min-w-0 bg-transparent">
-                {/* Top Navigation Bar */}
-                <TopBar
-                    onSidebarToggle={() => setSidebarOpen(!isSidebarOpen)}
-                    isSidebarOpen={isSidebarOpen}
-                />
+                {/* Navigation: mobile splits nav (top) and mode switching (bottom);
+                    desktop keeps the existing hover-driven top islands. */}
+                {isMobile ? (
+                    <MobileNav
+                        onSidebarToggle={() => setSidebarOpen(!isSidebarOpen)}
+                        isSidebarOpen={isSidebarOpen}
+                    />
+                ) : (
+                    <TopBar
+                        onSidebarToggle={() => setSidebarOpen(!isSidebarOpen)}
+                        isSidebarOpen={isSidebarOpen}
+                    />
+                )}
 
                 {children}
             </main>
