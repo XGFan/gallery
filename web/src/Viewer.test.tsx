@@ -96,7 +96,7 @@ vi.mock('./components/ui/Slider', () => ({
       max={max}
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      data-testid="row-height-slider"
+      data-testid="columns-slider"
     />
   )
 }))
@@ -181,41 +181,35 @@ describe('Viewer', () => {
     vi.unstubAllGlobals()
   })
 
-  describe('row-height localStorage fallback and persistence', () => {
-    it('uses DEFAULT_ROW_HEIGHT when localStorage is empty', async () => {
+  describe('columns localStorage fallback and persistence', () => {
+    // jsdom window.innerWidth is 1024 -> calColumns(1024) === 3.
+    it('defaults columns via calColumns when localStorage is empty', async () => {
       renderViewer()
-      expect(localStorage.getItem('row-height')).toBe('500')
+      expect(localStorage.getItem('gallery-columns')).toBe('3')
     })
 
-    it('uses DEFAULT_ROW_HEIGHT for invalid values below 200', async () => {
-      store['row-height'] = '50'
+    it('falls back to default for values below 1', async () => {
+      store['gallery-columns'] = '0'
       renderViewer()
-      expect(localStorage.getItem('row-height')).toBe('500')
+      expect(localStorage.getItem('gallery-columns')).toBe('3')
     })
 
-    it('uses DEFAULT_ROW_HEIGHT for invalid values above 1000', async () => {
-      store['row-height'] = '2000'
+    it('falls back to default for non-numeric values', async () => {
+      store['gallery-columns'] = 'invalid'
       renderViewer()
-      expect(localStorage.getItem('row-height')).toBe('500')
+      expect(localStorage.getItem('gallery-columns')).toBe('3')
     })
 
-    it('uses DEFAULT_ROW_HEIGHT for non-numeric values', async () => {
-      store['row-height'] = 'invalid'
+    it('persists the column count to localStorage', async () => {
+      store['gallery-columns'] = '2'
       renderViewer()
-      expect(localStorage.getItem('row-height')).toBe('500')
+      expect(localStorage.getItem('gallery-columns')).toBe('2')
     })
 
-    it('persists row-height changes to localStorage when value changes', async () => {
-      store['row-height'] = '300'
+    it('uses a valid column count from localStorage', async () => {
+      store['gallery-columns'] = '4'
       renderViewer()
-
-      expect(localStorage.getItem('row-height')).toBe('300')
-    })
-
-    it('uses valid row-height from localStorage', async () => {
-      store['row-height'] = '600'
-      renderViewer()
-      expect(localStorage.getItem('row-height')).toBe('600')
+      expect(localStorage.getItem('gallery-columns')).toBe('4')
     })
   })
 
@@ -402,31 +396,31 @@ describe('Viewer', () => {
     })
   })
 
-  describe('config modal row-height persistence', () => {
-    it('persists row-height changes to localStorage via slider', async () => {
+  describe('config modal columns persistence', () => {
+    it('persists column changes to localStorage via slider', async () => {
       const user = userEvent.setup()
-      store['row-height'] = '300'
+      store['gallery-columns'] = '2'
       renderViewer()
 
       await user.click(screen.getByRole('button', { name: 'Open settings' }))
 
-      const slider = screen.getByTestId('row-height-slider')
-      expect(slider).toHaveValue('300')
+      const slider = screen.getByTestId('columns-slider')
+      expect(slider).toHaveValue('2')
 
-      fireEvent.change(slider, { target: { value: '600' } })
+      fireEvent.change(slider, { target: { value: '4' } })
 
-      expect(localStorage.getItem('row-height')).toBe('600')
+      expect(localStorage.getItem('gallery-columns')).toBe('4')
     })
 
-    it('slider shows current row-height value', async () => {
+    it('slider shows the current column count', async () => {
       const user = userEvent.setup()
-      store['row-height'] = '750'
+      store['gallery-columns'] = '5'
       renderViewer()
 
       await user.click(screen.getByRole('button', { name: 'Open settings' }))
 
-      const slider = screen.getByTestId('row-height-slider')
-      expect(slider).toHaveValue('750')
+      const slider = screen.getByTestId('columns-slider')
+      expect(slider).toHaveValue('5')
     })
   })
 

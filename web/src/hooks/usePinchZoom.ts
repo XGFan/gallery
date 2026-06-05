@@ -10,68 +10,49 @@ export function touchDistance(a: Touch, b: Touch): number {
   return Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
 }
 
-/**
- * Map a pinch gesture to a new (rounded, clamped) value.
- *
- * Spreading the fingers apart (currentDistance > startDistance) scales the value
- * up; pinching them together scales it down — matching native pinch-to-zoom.
- */
-export function computePinchValue(
-  startValue: number,
-  startDistance: number,
-  currentDistance: number,
-  min: number,
-  max: number,
-): number {
-  if (startDistance <= 0) return clamp(startValue, min, max);
-  const scaled = startValue * (currentDistance / startDistance);
-  return clamp(Math.round(scaled), min, max);
-}
+/** Direction of a pinch step: +1 = zoom in (bigger), -1 = zoom out (smaller). */
+export type ZoomDirection = 1 | -1;
 
 interface UsePinchZoomOptions {
-  /** Current value (e.g. gallery row height in px). */
-  value: number;
-  /** Setter for the value; only called when the rounded value actually changes. */
-  setValue: (next: number) => void;
-  /** Lower bound for the value. */
-  min: number;
-  /** Upper bound for the value. */
-  max: number;
-  /** Pixels of value change per unit of ctrl/meta + wheel delta (trackpad pinch). */
-  wheelStep?: number;
+  /** Called once per discrete zoom step. +1 = zoom in (bigger), -1 = zoom out. */
+  onZoom: (direction: ZoomDirection) => void;
   /**
    * When false the gesture is fully disabled: no listeners are attached and the
    * page's native pinch-zoom is left untouched. Use this to yield to overlays
-   * that own their own zoom (e.g. an open lightbox) so the wall isn't resized
-   * behind them.
+   * that own their own zoom (e.g. an open lightbox).
    */
   enabled?: boolean;
+  /** Finger-spread delta (px) that triggers one step. Smaller = more sensitive. */
+  threshold?: number;
+  /** Minimum time (ms) between steps, so one gesture doesn't fire a burst. */
+  cooldownMs?: number;
 }
 
 /**
- * Resize an image wall by pinching.
+ * Resize an image wall by pinching, avp-style: each gesture emits discrete
+ * zoom steps (one column at a time) instead of a continuous value, which keeps
+ * the change crisp and always visible.
  *
- * - Touch screens: two-finger pinch scales `value` continuously.
- * - Trackpads: browsers deliver a pinch as `wheel` + ctrlKey, handled here too.
+ * - Touch screens: spreading two fingers past `threshold` zooms in; pinching
+ *   them together zooms out. The baseline re-arms after each step so a sustained
+ *   spread keeps stepping.
+ * - Trackpads: a pinch arrives as `wheel` + ctrlKey, handled the same way.
  *
- * Ported from the avp gallery (which adjusts a discrete column count); this
- * variant scales gallery's continuous `rowHeight`. Native page pinch-zoom is
- * suppressed while mounted so the gesture drives the wall instead of the page.
+ * Native page pinch-zoom is suppressed while enabled so the gesture drives the
+ * wall instead of the page.
  */
 export function usePinchZoom({
-  value,
-  setValue,
-  min,
-  max,
-  wheelStep = 1,
+  onZoom,
   enabled = true,
+  threshold = 30,
+  cooldownMs = 250,
 }: UsePinchZoomOptions): void {
-  // Keep the latest value reachable from the long-lived listeners below without
-  // re-subscribing on every change.
-  const valueRef = useRef(value);
+  // Keep the latest callback reachable from the long-lived listeners without
+  // re-subscribing on every render.
+  const onZoomRef = useRef(onZoom);
   useEffect(() => {
-    valueRef.current = value;
-  }, [value]);
+    onZoomRef.current = onZoom;
+  }, [onZoom]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -81,54 +62,48 @@ export function usePinchZoom({
     // Allow normal scrolling but disable the browser's own pinch-zoom.
     html.style.touchAction = "pan-x pan-y";
 
-    // Baseline for the active two-finger gesture; 0 means "no gesture in flight".
-    let startDistance = 0;
-    let startValue = 0;
+    let baseDistance = 0; // 0 means "no two-finger gesture in flight"
+    let lastStepAt = 0;
 
-    const apply = (next: number) => {
-      if (next !== valueRef.current) setValue(next);
-    };
-
-    // Capture a fresh baseline from the two active fingers.
-    const baseline = (e: TouchEvent) => {
-      startDistance = touchDistance(e.touches[0], e.touches[1]);
-      startValue = valueRef.current;
+    const step = (direction: ZoomDirection) => {
+      lastStepAt = Date.now();
+      onZoomRef.current(direction);
     };
 
     const onTouchStart = (e: TouchEvent) => {
-      // Only an exact two-finger contact starts a pinch; any other count
-      // (single-finger scroll, or a third finger) invalidates the baseline.
-      if (e.touches.length === 2) baseline(e);
-      else startDistance = 0;
+      baseDistance = e.touches.length === 2 ? touchDistance(e.touches[0], e.touches[1]) : 0;
     };
 
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length !== 2) {
         // Single finger (scroll) or 3+ fingers: not a pinch — never preventDefault.
-        startDistance = 0;
-        return;
-      }
-      if (startDistance === 0) {
-        // A clean two-finger gesture (re)started, e.g. after going 2->3->2
-        // fingers; re-baseline from here instead of using stale fingers.
-        baseline(e);
+        baseDistance = 0;
         return;
       }
       e.preventDefault(); // block native pinch-zoom
       const current = touchDistance(e.touches[0], e.touches[1]);
-      apply(computePinchValue(startValue, startDistance, current, min, max));
+      if (baseDistance === 0) {
+        baseDistance = current; // (re)arm baseline for a fresh two-finger gesture
+        return;
+      }
+      const delta = current - baseDistance;
+      if (Math.abs(delta) > threshold && Date.now() - lastStepAt > cooldownMs) {
+        step(delta > 0 ? 1 : -1); // spread -> zoom in (bigger); pinch -> zoom out
+        baseDistance = current; // re-arm so a sustained gesture keeps stepping
+      }
     };
 
     const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) startDistance = 0;
+      if (e.touches.length < 2) baseDistance = 0;
     };
 
     // Trackpad pinch is reported as a wheel event with ctrlKey set.
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
-      // Wheel up (deltaY < 0) zooms in -> larger value.
-      apply(clamp(Math.round(valueRef.current - e.deltaY * wheelStep), min, max));
+      if (Date.now() - lastStepAt <= cooldownMs) return;
+      if (e.deltaY < 0) step(1); // wheel up -> zoom in
+      else if (e.deltaY > 0) step(-1); // wheel down -> zoom out
     };
 
     // Safari fires non-standard gesture events for trackpad pinch; block the
@@ -153,5 +128,5 @@ export function usePinchZoom({
       document.removeEventListener("gesturestart", preventGesture);
       document.removeEventListener("gesturechange", preventGesture);
     };
-  }, [enabled, setValue, min, max, wheelStep]);
+  }, [enabled, threshold, cooldownMs]);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Album, AppCtx, DEFAULT_PAGE_SIZE, ImgData, getMimeType } from "./dto";
 import "./Viewer.css"
 import { Gallery } from "react-gallery-grid";
@@ -13,7 +13,8 @@ import { Slider } from "./components/ui/Slider";
 import { GalleryItem } from "./components/GalleryItem";
 import VerticalPlayer from "./components/VerticalPlayer";
 import { buildSwipeSequence, getMixedMode } from "./utils";
-import { usePinchZoom } from "./hooks/usePinchZoom";
+import { usePinchZoom, clamp } from "./hooks/usePinchZoom";
+import { averageAspect, calColumns, columnsToRowHeight, getColumnLimits } from "./gridLayout";
 
 const DEFAULT_PLUGINS = [
   Fullscreen,
@@ -23,9 +24,7 @@ const DEFAULT_PLUGINS = [
 ]
 const RANDOM_PLUGINS = [Fullscreen, Slideshow, Zoom, Video]
 
-const DEFAULT_ROW_HEIGHT = 500
-const ROW_HEIGHT_MIN = 250
-const ROW_HEIGHT_MAX = 1000
+const DEFAULT_VIEWPORT_WIDTH = 1280
 
 const GoIcon = createIcon("Go", <path
   d="M 17.92 4.288 a 2.312 2.312 90 0 0 -2.4 -0.568 L 4.2 7.504 a 2.32 2.32 90 0 0 -0.096 4.376 l 4.192 1.6 h 0 a 0.744 0.744 90 0 1 0.424 0.416 l 1.6 4.2 A 2.296 2.296 90 0 0 12.488 19.6 h 0.056 a 2.304 2.304 90 0 0 2.152 -1.6 L 18.48 6.664 A 2.312 2.312 90 0 0 17.92 4.288 Z M 17 6.16 L 13.176 17.504 a 0.704 0.704 90 0 1 -0.672 0.496 a 0.736 0.736 90 0 1 -0.696 -0.464 l -1.6 -4.2 a 2.328 2.328 90 0 0 -1.336 -1.344 l -4.2 -1.6 A 0.72 0.72 90 0 1 4.2 9.696 a 0.704 0.704 90 0 1 0.496 -0.672 L 16.04 5.24 A 0.728 0.728 90 0 1 17 6.16 Z" />);
@@ -37,16 +36,17 @@ export default function Viewer() {
   const [index, setIndex] = useState(-1);
   const [activePlayer, setActivePlayer] = useState<'vertical' | 'lightbox' | null>(null);
   const [entryKey, setEntryKey] = useState<string | null>(null);
-  const [rowHeight, setRowHeight] = useState(() => {
-    //parse string to number
-    const height: number = Number(localStorage.getItem("row-height"));
-    console.log(`localstorage: ${height}`)
-    if (height == null || isNaN(height) || height < 200 || height > 1000) {
-      return DEFAULT_ROW_HEIGHT
-    } else {
-      return height
-    }
+  const [columns, setColumns] = useState(() => {
+    const saved = Number(localStorage.getItem("gallery-columns"));
+    const fallback = calColumns(typeof window !== "undefined" ? window.innerWidth : DEFAULT_VIEWPORT_WIDTH);
+    // Cap at a sane upper bound so a corrupted value can't persist absurd counts;
+    // the real per-viewport limit is applied via effectiveColumns below.
+    return Number.isFinite(saved) && saved >= 1 ? Math.min(Math.round(saved), 64) : fallback;
   });
+  const [containerWidth, setContainerWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : DEFAULT_VIEWPORT_WIDTH
+  );
+  const galleryRef = useRef<HTMLDivElement>(null);
   const [album, setAlbum] = useState(fullAlbum.subAlbum(DEFAULT_PAGE_SIZE))
   const [showConfig, setShowConfig] = useState(false)
   const [showCounter, setShowCounter] = useState(true)
@@ -84,21 +84,56 @@ export default function Viewer() {
     return null;
   }, [activePlayer, entryKey, album.images]);
 
-  useEffect(() => {
-    localStorage.setItem("row-height", String(rowHeight));
-  }, [rowHeight])
+  // Column-driven sizing (avp-style): `columns` is the source of truth; the
+  // justified grid gets a target row height derived from columns + container
+  // width + the items' average aspect ratio, so each step is a clean change.
+  const avgAspect = useMemo(() => averageAspect(album.images), [album.images]);
+  const columnLimits = useMemo(() => getColumnLimits(containerWidth), [containerWidth]);
+  const effectiveColumns = clamp(columns, columnLimits.min, columnLimits.max);
+  const rowHeight = useMemo(
+    () => columnsToRowHeight(containerWidth, effectiveColumns, avgAspect),
+    [containerWidth, effectiveColumns, avgAspect]
+  );
 
-  // Pinch (touch) or ctrl/⌘ + wheel (trackpad) to resize the image wall.
+  useEffect(() => {
+    localStorage.setItem("gallery-columns", String(columns));
+  }, [columns])
+
+  // Track the gallery container width so the column count maps to real pixels.
+  // The measured wrapper and react-gallery-grid's own root both span 100% with
+  // no padding/border, so this width equals the width the grid packs against;
+  // keep them in sync if either gains spacing.
+  useEffect(() => {
+    const el = galleryRef.current;
+    if (!el) return;
+    const update = () => setContainerWidth(el.clientWidth || window.innerWidth);
+    update();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [fullAlbum]);
+
+  // Keep the latest column limits reachable from the stable zoom handler.
+  const columnLimitsRef = useRef(columnLimits);
+  useEffect(() => { columnLimitsRef.current = columnLimits; }, [columnLimits]);
+
+  // Pinch (touch) or ctrl/⌘ + wheel (trackpad) steps the column count.
+  // Zoom in (spread / wheel up) => fewer columns => bigger images.
+  const handleZoom = useCallback((direction: 1 | -1) => {
+    setColumns((current) => {
+      const { min, max } = columnLimitsRef.current;
+      return clamp(direction > 0 ? current - 1 : current + 1, min, max);
+    });
+  }, []);
+
   // Disabled while an overlay is open so the lightbox/player owns its own zoom
   // gestures instead of resizing the wall behind it.
   const overlayOpen = activePlayer !== null || (album.mode === 'random' && index >= 0);
-  usePinchZoom({
-    value: rowHeight,
-    setValue: setRowHeight,
-    min: ROW_HEIGHT_MIN,
-    max: ROW_HEIGHT_MAX,
-    enabled: !overlayOpen,
-  });
+  usePinchZoom({ onZoom: handleZoom, enabled: !overlayOpen });
   useEffect(() => {
     console.log("full album has changed", fullAlbum)
     window.scrollTo(0, 0)
@@ -201,6 +236,7 @@ export default function Viewer() {
       scrollThreshold={0.9}
       className="w-full"
       next={fetchNew}>
+      <div ref={galleryRef} className="w-full">
       <Gallery
         items={album.images}
         itemRenderer={({ item, size, index }) => {
@@ -253,8 +289,10 @@ export default function Viewer() {
           );
         }}
         rowHeightRange={{ min: rowHeight * 0.7, max: rowHeight * 1.3 }}
+        maxColumns={effectiveColumns}
         gap={4}
       />
+      </div>
     </InfiniteScroll>
     <button
       type="button"
@@ -273,19 +311,19 @@ export default function Viewer() {
     >
       <div className="grid grid-cols-[auto_1fr_auto] gap-4 items-center">
         <div className="text-sm font-medium text-white/80">
-          Height
+          Columns
         </div>
         <div>
           <Slider
-            min={ROW_HEIGHT_MIN}
-            max={ROW_HEIGHT_MAX}
-            onChange={setRowHeight}
-            value={rowHeight}
-            step={50}
+            min={columnLimits.min}
+            max={columnLimits.max}
+            onChange={setColumns}
+            value={effectiveColumns}
+            step={1}
           />
         </div>
         <div className="text-sm font-mono text-white/60 w-10 text-right">
-          {rowHeight}
+          {effectiveColumns}
         </div>
       </div>
     </Modal>
