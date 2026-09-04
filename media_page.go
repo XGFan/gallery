@@ -30,6 +30,11 @@ type MediaPage struct {
 	Limit  int         `json:"limit"`
 }
 
+// maxPageSize caps what a client can ask for in one page. Beyond this the
+// response stops being a "page" and the caller may as well omit limit entirely.
+// The cap also keeps offset+limit from overflowing in paginate.
+const maxPageSize = 1000
+
 // parsePageParams reports whether the client requested pagination, along with
 // the requested window. When it returns false the caller must fall back to the
 // legacy images/videos response so the web frontend stays untouched.
@@ -41,6 +46,9 @@ func parsePageParams(c *gin.Context) (offset int, limit int, requested bool) {
 	limit, err := strconv.Atoi(raw)
 	if err != nil || limit <= 0 {
 		return 0, 0, false
+	}
+	if limit > maxPageSize {
+		limit = maxPageSize
 	}
 	offset, err = strconv.Atoi(c.Query("offset"))
 	if err != nil || offset < 0 {
@@ -88,9 +96,12 @@ func paginate(items []MediaItem, offset int, limit int) MediaPage {
 	if offset > total {
 		offset = total
 	}
-	end := offset + limit
-	if end > total {
-		end = total
+	// Computed as a distance from offset rather than as offset+limit: the sum
+	// overflows to a negative number for a large limit, which then slips past a
+	// "> total" clamp and panics the slice expression.
+	end := total
+	if limit < total-offset {
+		end = offset + limit
 	}
 	return MediaPage{
 		Items:  items[offset:end],

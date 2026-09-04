@@ -1,6 +1,7 @@
 package gallery
 
 import (
+	"math"
 	"net/http/httptest"
 	"testing"
 
@@ -74,6 +75,9 @@ func TestMergeMedia_SortsByPathAndInterleavesTypes(t *testing.T) {
 		gotPaths[i] = it.Path
 	}
 	wantPaths := []string{"a/a.jpg", "a/b.mp4", "a/c.jpg", "a/d.mp4"}
+	if len(gotPaths) != len(wantPaths) {
+		t.Fatalf("got %d items %v, want %d %v", len(gotPaths), gotPaths, len(wantPaths), wantPaths)
+	}
 	for i := range wantPaths {
 		if gotPaths[i] != wantPaths[i] {
 			t.Fatalf("got order %v, want %v", gotPaths, wantPaths)
@@ -118,5 +122,43 @@ func TestPaginate_BeyondEndIsEmptyNotPanic(t *testing.T) {
 	page := paginate(items, 1, 10)
 	if len(page.Items) != 1 || page.Items[0].Path != "2" {
 		t.Errorf("unexpected last page: %+v", page.Items)
+	}
+}
+
+// A large limit used to overflow offset+limit into a negative number, which
+// slipped past the "> total" clamp and panicked the slice expression. Reachable
+// from any client that sends ?limit=<huge>.
+func TestPaginate_HugeLimitDoesNotPanic(t *testing.T) {
+	items := mergeMedia([]core.ImageNode{img("1"), img("2"), img("3")}, nil)
+
+	for _, tc := range []struct {
+		name   string
+		offset int
+		limit  int
+	}{
+		{"max int", 1, math.MaxInt},
+		{"max int at zero offset", 0, math.MaxInt},
+		{"huge but not max", 2, 1 << 60},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			page := paginate(items, tc.offset, tc.limit)
+			want := len(items) - tc.offset
+			if len(page.Items) != want {
+				t.Errorf("got %d items, want %d", len(page.Items), want)
+			}
+			if page.Total != 3 {
+				t.Errorf("got total=%d, want 3", page.Total)
+			}
+		})
+	}
+}
+
+func TestParsePageParams_ClampsHugeLimit(t *testing.T) {
+	_, limit, requested := paramsFor(t, "?limit=9223372036854775807")
+	if !requested {
+		t.Fatal("a huge limit is still a paging request")
+	}
+	if limit != maxPageSize {
+		t.Errorf("got limit=%d, want it clamped to %d", limit, maxPageSize)
 	}
 }
