@@ -72,7 +72,9 @@ struct GalleryClient: Sendable {
         case .media(let m):
             m.isVideo ? posterURL(m.path) : thumbnailURL(m.path)
         case .folder(let f):
-            f.cover.map { $0.isVideo ? posterURL($0.path) : thumbnailURL($0.path) }
+            f.cover?.path.map { path in
+                MediaKindGuess.isVideoPath(path) ? posterURL(path) : thumbnailURL(path)
+            }
         }
     }
 
@@ -139,12 +141,17 @@ struct GalleryClient: Sendable {
     private func validate(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else { throw GalleryError.badResponse }
 
+        // Status first. The tinyauth signature is specifically a *2xx* carrying
+        // HTML (URLSession followed the 302 to the login page). Testing the
+        // content type first would report a proxy's 502 error page as "you are
+        // on the wrong network" and send the user off debugging their Wi-Fi
+        // while the backend is simply restarting.
+        guard (200..<300).contains(http.statusCode) else {
+            throw GalleryError.http(http.statusCode)
+        }
         let contentType = http.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
         if contentType.contains("text/html") {
             throw GalleryError.needsTrustedNetwork
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw GalleryError.http(http.statusCode)
         }
     }
 }

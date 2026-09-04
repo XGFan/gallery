@@ -42,6 +42,19 @@ xcodebuild test -project GalleryApp.xcodeproj -scheme GalleryApp \
   -only-testing:GalleryAppUITests
 ```
 
+### macOS 上的 UI 测试需要先授权
+
+E2E target 同时支持 macOS，但 macOS 的 UI 测试要求**辅助功能授权**，会弹一次系统对话框。
+在非交互环境下它会直接失败：
+
+```
+The test runner failed to initialize for UI testing.
+(Underlying Error: Authentication canceled. System authentication is running.)
+```
+
+首次在 macOS 上跑 E2E 时需要人工确认那个弹窗（同样的权限也决定了 `screencapture`
+能否截到窗口内容）。授权前，macOS 端只能验证到「编译通过 + 启动不崩溃 + API 请求成功」。
+
 装进模拟器手动看：
 
 ```shell

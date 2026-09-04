@@ -72,10 +72,14 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.gallery.app.tests
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: YES
+        # xcodegen emits the iOS-shaped TEST_HOST for a multiplatform target;
+        # on macOS the executable lives inside Contents/MacOS, so without this
+        # the whole scheme fails to build for macOS.
+        TEST_HOST[sdk=macosx*]: "$(BUILT_PRODUCTS_DIR)/GalleryApp.app/Contents/MacOS/GalleryApp"
 
   GalleryAppUITests:
     type: bundle.ui-testing
-    supportedDestinations: [iOS]
+    supportedDestinations: [iOS, macOS]
     sources:
       - path: Tests/GalleryAppUITests
     dependencies:

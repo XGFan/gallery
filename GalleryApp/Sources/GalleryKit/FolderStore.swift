@@ -25,8 +25,14 @@ final class FolderStore {
     }
 
     private(set) var entries: [WallEntry] = []
-    private(set) var isLoading = false
     private(set) var error: GalleryError?
+
+    /// Which load is in flight, rather than a bare Bool. A superseded load's
+    /// `defer` must not clear the flag for the load that replaced it — that
+    /// window let the wall fire another fetch at the same offset and append
+    /// every item twice.
+    private var loadingToken: Int?
+    var isLoading: Bool { loadingToken != nil }
     /// Total in the recursive view; nil in the shallow view, which is never paged.
     private(set) var total: Int?
 
@@ -70,8 +76,8 @@ final class FolderStore {
     }
 
     private func loadNextPage(token: Int) async {
-        isLoading = true
-        defer { isLoading = false }
+        loadingToken = token
+        defer { if loadingToken == token { loadingToken = nil } }
 
         do {
             if recursive {
@@ -93,11 +99,24 @@ final class FolderStore {
         } catch let galleryError as GalleryError {
             guard token == loadToken else { return }
             error = galleryError
-            reachedEnd = true
         } catch {
             guard token == loadToken else { return }
             self.error = .badResponse
-            reachedEnd = true
+        }
+    }
+
+    /// Clears a page error and tries again. Deliberately separate from
+    /// `loadMoreIfNeeded`: after a failure the wall must stop asking on its own
+    /// (or a dead network becomes a fetch loop), but the user must still have a
+    /// way back — otherwise a blip on page 3 leaves a wall that silently never
+    /// grows again.
+    func retry() async {
+        guard error != nil else { return }
+        error = nil
+        if entries.isEmpty {
+            await reload()
+        } else {
+            await loadNextPage(token: loadToken)
         }
     }
 }

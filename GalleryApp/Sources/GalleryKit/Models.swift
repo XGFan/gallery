@@ -46,9 +46,17 @@ struct FolderNode: Decodable, Identifiable, Hashable, Sendable {
     var id: String { path }
 }
 
+/// A folder's cover.
+///
+/// Every field is optional, `path` included. The backend declares cover as a
+/// non-pointer struct with `omitempty` — which does nothing for a struct — so a
+/// folder whose whole subtree holds no media serialises as `"cover": {}`.
+/// A required `path` would make that empty object fail to decode, and because
+/// the failure is at the top level it would take the *entire* folder listing
+/// with it: one media-less subfolder anywhere would blank out its parent.
 struct CoverNode: Decodable, Hashable, Sendable {
     let name: String?
-    let path: String
+    let path: String?
     let width: Int?
     let height: Int?
 
@@ -60,7 +68,7 @@ struct CoverNode: Decodable, Hashable, Sendable {
     /// Folder covers can themselves be videos, which need the poster route
     /// rather than the thumbnail route.
     var isVideo: Bool {
-        MediaKindGuess.isVideoPath(path)
+        path.map(MediaKindGuess.isVideoPath) ?? false
     }
 }
 

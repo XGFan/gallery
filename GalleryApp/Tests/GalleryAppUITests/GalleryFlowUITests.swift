@@ -23,10 +23,13 @@ final class GalleryFlowUITests: XCTestCase {
     private func firstFolderCell(timeout: TimeInterval = 30) -> XCUIElement {
         let predicate = NSPredicate(format: "identifier BEGINSWITH 'folder-cell:'")
         let cell = app.descendants(matching: .any).matching(predicate).firstMatch
-        XCTAssertTrue(
-            cell.waitForExistence(timeout: timeout),
-            "no folder cell appeared — is the backend reachable from this network?"
-        )
+        if !cell.waitForExistence(timeout: timeout) {
+            XCTFail("""
+            no folder cell appeared — is the backend reachable from this network?
+            Hierarchy:
+            \(app.debugDescription)
+            """)
+        }
         return cell
     }
 

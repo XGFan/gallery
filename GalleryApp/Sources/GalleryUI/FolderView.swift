@@ -73,7 +73,24 @@ struct FolderView: View {
 
     @ViewBuilder
     private var loadingFooter: some View {
-        if store.isLoading, !store.entries.isEmpty {
+        // A page failure must stay visible and recoverable. Without this the
+        // wall just stops growing: no spinner, no message, and scrolling does
+        // nothing — indistinguishable from having reached the end.
+        if let error = store.error, !store.entries.isEmpty {
+            Button {
+                Task { await store.retry() }
+            } label: {
+                Label(error.localizedDescription, systemImage: "arrow.clockwise")
+                    .font(.caption)
+                    .lineLimit(2)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.regularMaterial, in: Capsule())
+            .padding(.bottom, 12)
+            .padding(.horizontal, 16)
+        } else if store.isLoading, !store.entries.isEmpty {
             ProgressView()
                 .padding(8)
                 .background(.regularMaterial, in: Capsule())
