@@ -200,11 +200,17 @@ func (g *Gallery) HandleImage(c *gin.Context) {
 
 // HandleMedia godoc
 // @Summary List all media under a directory
-// @Description Returns all images and videos under the specified directory
+// @Description Returns all images and videos under the specified directory.
+// @Description Pagination is opt-in: pass a positive `limit` to receive a MediaPage
+// @Description ({items, total, offset, limit}) whose items are images and videos merged
+// @Description into one path-sorted sequence. Without `limit` the legacy
+// @Description {images, videos} shape is returned unchanged.
 // @Tags media
 // @Produce json
 // @Param name path string true "Directory path"
 // @Param flat query bool false "Flatten search into subdirectories (default: true)"
+// @Param limit query int false "Page size. When present (and > 0), switches the response to MediaPage"
+// @Param offset query int false "Page offset, only meaningful together with limit (default: 0)"
 // @Success 200 {object} core.MediaResponse
 // @Router /api/media/{name} [get]
 func (g *Gallery) HandleMedia(c *gin.Context) {
@@ -225,6 +231,14 @@ func (g *Gallery) HandleMedia(c *gin.Context) {
 	}
 
 	videos = g.fillVideoMetas(videos)
+
+	// Paged response is opt-in: only a client that passes ?limit= gets it, so
+	// the web frontend keeps receiving the legacy images/videos shape.
+	if offset, limit, requested := parsePageParams(c); requested {
+		c.JSON(200, paginate(mergeMedia(images, videos), offset, limit))
+		return
+	}
+
 	if images == nil {
 		images = make([]core.ImageNode, 0)
 	}
