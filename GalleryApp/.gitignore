@@ -1,0 +1,9 @@
+# 由 xcodegen 从 project.yml 生成，不入库
+# （工程配置的唯一真源是 project.yml）
+GalleryApp.xcodeproj/
+Info.plist
+
+.build/
+*.log
+*.xcresult
+DerivedData/

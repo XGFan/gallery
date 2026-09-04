@@ -1,0 +1,105 @@
+name: GalleryApp
+
+options:
+  bundleIdPrefix: com.gallery
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  Kingfisher:
+    url: https://github.com/onevcat/Kingfisher.git
+    from: 7.12.0
+
+targets:
+  GalleryApp:
+    type: application
+    # One target, both platforms. See docs/adr/0002 — sharing the stack is the
+    # preference; if the wall can't stay fluid this way, the wall (not the whole
+    # app) is what splits per platform.
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - path: Sources
+    dependencies:
+      - package: Kingfisher
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Gallery
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        # tiny-viewer keeps tinyviewer:// while both apps coexist, so this one
+        # registers its own scheme.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.gallery.app
+            CFBundleURLSchemes: [gallery]
+        # The backend is plain HTTP-free but lives behind a LAN-only host; keep
+        # ATS strict and rely on the real TLS cert.
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gallery.app
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        ENABLE_PREVIEWS: YES
+        GENERATE_INFOPLIST_FILE: NO
+        # No development team on purpose. The simulator ignores signing, and a
+        # local macOS build only needs an ad-hoc signature ("-"). Device installs
+        # do NOT go through Xcode signing at all — they use the re-sign recipe in
+        # ios-cert/README.md, which stamps the Ad Hoc distribution cert onto an
+        # unsigned Release build.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: NO
+        DEVELOPMENT_TEAM: ""
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+
+  GalleryKitTests:
+    type: bundle.unit-test
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - path: Tests/GalleryKitTests
+    dependencies:
+      - target: GalleryApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gallery.app.tests
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+
+  GalleryAppUITests:
+    type: bundle.ui-testing
+    supportedDestinations: [iOS]
+    sources:
+      - path: Tests/GalleryAppUITests
+    dependencies:
+      - target: GalleryApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gallery.app.uitests
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: GalleryApp
+
+schemes:
+  GalleryApp:
+    build:
+      targets:
+        GalleryApp: all
+        GalleryKitTests: [test]
+        GalleryAppUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - GalleryKitTests
+        # E2E hits the real backend, so it only runs on iOS and only from a
+        # network covered by tinyauth's IP bypass. See docs/adr/0004.
+        - GalleryAppUITests
