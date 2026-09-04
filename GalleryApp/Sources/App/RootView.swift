@@ -16,6 +16,17 @@ struct RootView: View {
         } detail: {
             stack
         }
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    FloatingWindowController.toggle(client: client)
+                } label: {
+                    Image(systemName: "pip")
+                }
+                .help("悬浮窗")
+                .accessibilityIdentifier("floating-toggle")
+            }
+        }
         .task { await loadTree() }
         #else
         stack

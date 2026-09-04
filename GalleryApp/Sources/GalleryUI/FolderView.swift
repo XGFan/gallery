@@ -25,12 +25,20 @@ struct FolderView: View {
             #endif
             .toolbar { toolbarItems }
             .task { await store.loadInitial() }
+            .onChange(of: columnCount) { _, new in ColumnPreference.store(new) }
             .fullScreenCoverCompat(item: $viewer) { context in
                 ViewerView(
                     items: context.items,
                     startIndex: context.startIndex,
                     client: client,
-                    onClose: { viewer = nil }
+                    options: context.options,
+                    onClose: { viewer = nil },
+                    // Without this the sequence dead-ends at whatever page
+                    // happened to be loaded when the viewer opened.
+                    onNearEnd: context.livePaging
+                        ? { Task { await extendViewerSequence() } }
+                        : nil,
+                    totalCount: context.livePaging ? store.total : nil
                 )
             }
     }
@@ -53,7 +61,8 @@ struct FolderView: View {
     private var wall: some View {
         MasonryWall(
             items: store.entries,
-            columnCount: columnCount,
+            columnCount: $columnCount,
+            columnRange: ColumnPreference.minColumns...ColumnPreference.maxColumns,
             spacing: 4,
             aspectRatio: { $0.aspectRatio },
             onNearEnd: { Task { await store.loadMoreIfNeeded() } }
@@ -123,6 +132,12 @@ struct FolderView: View {
             }
             .disabled(columnCount <= ColumnPreference.minColumns)
 
+            Button(action: startShuffle) {
+                Image(systemName: "shuffle")
+            }
+            .disabled(mediaEntries.isEmpty)
+            .accessibilityIdentifier("shuffle-button")
+
             Toggle(isOn: $store.recursive) {
                 Label("递归", systemImage: store.recursive ? "square.stack.3d.down.right.fill" : "square.stack.3d.down.right")
             }
@@ -137,15 +152,57 @@ struct FolderView: View {
         ColumnPreference.store(clamped)
     }
 
+    /// The media on the wall, in wall order.
+    private var mediaEntries: [MediaItem] {
+        store.entries.compactMap { entry in
+            if case .media(let m) = entry { return m }
+            return nil
+        }
+    }
+
+    /// Shuffle is an action, not a view: it opens the same left/right viewer
+    /// with the sequence rearranged. See docs/adr/0006.
+    private func startShuffle() {
+        let media = mediaEntries
+        guard !media.isEmpty else { return }
+        let (sequence, start) = MediaOrder.sequence(
+            from: media,
+            entry: nil,
+            mixed: MixedModePreference.load(),
+            seed: UInt64.random(in: 1...UInt64.max)
+        )
+        guard !sequence.isEmpty else { return }
+        viewer = ViewerContext(
+            items: sequence,
+            startIndex: start,
+            options: ViewerOptions(shuffled: true),
+            // A shuffled order is a snapshot: appending later pages to it would
+            // interleave un-shuffled items into a shuffled sequence.
+            livePaging: false
+        )
+    }
+
+    /// Pages in more and hands the grown sequence to the open viewer, so a swipe
+    /// can continue past the pages that happened to be loaded when it opened.
+    private func extendViewerSequence() async {
+        await store.loadMoreIfNeeded()
+        guard let current = viewer, current.livePaging else { return }
+        let media = mediaEntries
+        guard media.count > current.items.count else { return }
+        viewer = ViewerContext(
+            items: media,
+            startIndex: current.startIndex,
+            options: current.options,
+            livePaging: true
+        )
+    }
+
     private func open(_ entry: WallEntry) {
         guard case .media = entry else { return }
         // The viewer's sequence is the wall's own order, which is what makes a
         // single horizontal-swipe player enough for both images and videos.
         // See docs/adr/0001.
-        let media = store.entries.compactMap { entry -> MediaItem? in
-            if case .media(let m) = entry { return m }
-            return nil
-        }
+        let media = mediaEntries
         guard case .media(let tapped) = entry,
               let index = media.firstIndex(of: tapped)
         else { return }
@@ -153,9 +210,16 @@ struct FolderView: View {
     }
 }
 
-struct ViewerContext: Identifiable, Hashable {
+/// Identifiable only — hashing a value carrying the whole media array is a
+/// footgun, and `fullScreenCover(item:)` never needs it.
+struct ViewerContext: Identifiable {
     let items: [MediaItem]
     let startIndex: Int
+    var options: ViewerOptions = .default
+    /// A shuffled sequence is a fixed snapshot; only the in-order sequence keeps
+    /// growing as the folder pages in.
+    var livePaging: Bool = true
+
     var id: String { (items.indices.contains(startIndex) ? items[startIndex].path : "") + "@\(startIndex)" }
 }
 

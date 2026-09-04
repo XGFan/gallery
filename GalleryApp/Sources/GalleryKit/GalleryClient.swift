@@ -7,6 +7,10 @@ enum GalleryError: LocalizedError, Equatable {
     case needsTrustedNetwork
     case http(Int)
     case badResponse
+    /// Carries the underlying decoding failure. Without it every schema
+    /// mismatch collapses into one unactionable sentence, which is exactly what
+    /// made a real field mismatch take an afternoon to find.
+    case decoding(String)
 
     var errorDescription: String? {
         switch self {
@@ -16,6 +20,8 @@ enum GalleryError: LocalizedError, Equatable {
             "服务器返回 \(code)。"
         case .badResponse:
             "服务器返回了无法解析的内容。"
+        case .decoding(let detail):
+            "无法解析服务器返回的内容：\(detail)"
         }
     }
 }
@@ -131,7 +137,28 @@ struct GalleryClient: Sendable {
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
-            throw GalleryError.badResponse
+            throw GalleryError.decoding(Self.describe(error))
+        }
+    }
+
+    /// Turns a DecodingError into something that names the offending key and
+    /// path, rather than a generic "could not parse".
+    private static func describe(_ error: Error) -> String {
+        guard let decoding = error as? DecodingError else { return String(describing: error) }
+        func path(_ context: DecodingError.Context) -> String {
+            context.codingPath.map(\.stringValue).joined(separator: ".")
+        }
+        switch decoding {
+        case .keyNotFound(let key, let context):
+            return "缺少字段 \(key.stringValue)（位置 \(path(context))）"
+        case .typeMismatch(let type, let context):
+            return "字段类型不符，期望 \(type)（位置 \(path(context))）"
+        case .valueNotFound(let type, let context):
+            return "字段为空，期望 \(type)（位置 \(path(context))）"
+        case .dataCorrupted(let context):
+            return "内容损坏（位置 \(path(context))）：\(context.debugDescription)"
+        @unknown default:
+            return String(describing: decoding)
         }
     }
 

@@ -48,12 +48,16 @@ final class GalleryFlowUITests: XCTestCase {
         // the 1pt floor (the wall measured its own content to decide its content
         // width); every existence assertion still passed while the wall was a
         // hairline. Assert the cell occupies a plausible share of the screen.
-        let screenWidth = app.frame.width
-        XCTAssertGreaterThan(screenWidth, 0)
+        // On macOS the application element has no frame — the size lives on the
+        // window. Reading app.frame there yields 0 and the assertion fails for a
+        // reason that has nothing to do with the wall.
+        let windowWidth = app.windows.firstMatch.frame.width
+        let containerWidth = windowWidth > 0 ? windowWidth : app.frame.width
+        XCTAssertGreaterThan(containerWidth, 0, "could not measure the container")
         XCTAssertGreaterThan(
             cell.frame.width,
-            screenWidth / 6,
-            "cell is \(cell.frame.width)pt wide on a \(screenWidth)pt screen — the wall collapsed"
+            containerWidth / 6,
+            "cell is \(cell.frame.width)pt wide in a \(containerWidth)pt container — the wall collapsed"
         )
         XCTAssertGreaterThan(cell.frame.height, 20, "cell has no height")
     }
