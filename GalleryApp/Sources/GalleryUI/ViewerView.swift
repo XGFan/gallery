@@ -105,6 +105,12 @@ struct ViewerView: View {
                 dismissTranslation = value.translation
             }
             .onEnded { value in
+                // Requiring a dismiss to have been in flight is what stops a
+                // curved swipe (right 200pt, then hooking down to 320pt) from
+                // paging *and* slamming the viewer shut: every intermediate
+                // sample failed the dominance test, so no dismiss ever started.
+                guard dismissTranslation != .zero else { return }
+
                 let commit = ViewerGesture.shouldCommitDismiss(
                     translation: value.translation,
                     velocity: value.velocity,
@@ -199,13 +205,21 @@ struct ViewerView: View {
 
     private func runAutoAdvance() async {
         guard autoAdvance, items.count > 1 else { return }
-        try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+        guard let index = currentIndex else { return }
+        // A video gets its full duration; a 3s timer would tear a long clip down
+        // three seconds in.
+        let dwell = AutoAdvance.dwellTime(for: items[index], interval: interval)
+        try? await Task.sleep(nanoseconds: UInt64(dwell * 1_000_000_000))
         guard !Task.isCancelled, autoAdvance else { return }
-        guard let index = currentIndex,
-              let next = AutoAdvance.nextIndex(current: index, count: items.count)
+        guard let now = currentIndex,
+              let next = AutoAdvance.nextIndex(current: now, count: items.count)
         else { return }
-        withAnimation(.easeInOut(duration: 0.3)) {
+        if next < now {
+            // Wrapping to the start: animating would sweep the scroll position
+            // across the entire LazyHStack.
             currentID = items[next].id
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) { currentID = items[next].id }
         }
     }
 
@@ -250,6 +264,16 @@ struct ZoomableImage: View {
             .simultaneousGesture(pan, including: ViewerGesture.allowsPan(scale: scale) ? .all : .subviews)
             .onTapGesture(count: 2) { toggleZoom() }
             .onTapGesture { onSingleTap() }
+            // The pager keeps adjacent pages alive, so a page revisited after
+            // paging away still holds its old steadyScale/offset/usesOriginal.
+            // Only `scale` is externalised; syncing the rest off it is what stops
+            // the next pinch from jumping straight back to the old magnification.
+            .onChange(of: scale) { _, new in
+                guard !ViewerGesture.isZoomed(new) else { return }
+                steadyScale = 1
+                usesOriginal = false
+                resetPan()
+            }
     }
 
     private var magnification: some Gesture {
@@ -325,6 +349,16 @@ struct VideoPage: View {
             } else {
                 release()
             }
+        }
+        // Correct regardless of the call site: if a caller reuses this view for
+        // a different video without changing its identity, the URL change alone
+        // must swap the player. Otherwise the first clip keeps playing.
+        .onChange(of: url) { _, newURL in
+            release()
+            guard isActive else { return }
+            let player = AVPlayer(url: newURL)
+            self.player = player
+            player.play()
         }
         .onDisappear { release() }
     }

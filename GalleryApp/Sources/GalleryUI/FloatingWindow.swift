@@ -25,14 +25,8 @@ final class FloatingWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    static var isOpen: Bool { shared != nil }
-
-    private let client: GalleryClient
-
     init(client: GalleryClient) {
-        self.client = client
-
-        let window = NSWindow(
+        let window = FloatingPanel(
             contentRect: FloatingWindowFrame.load(),
             styleMask: [.borderless, .resizable],
             backing: .buffered,
@@ -44,9 +38,9 @@ final class FloatingWindowController: NSWindowController, NSWindowDelegate {
         window.hasShadow = true
         window.isMovableByWindowBackground = true
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        // A borderless window is not key by default, which would make the close
-        // button and keyboard shortcuts inert.
-        window.tabbingMode = .disallowed
+        // Programmatically created NSWindows default to releasing themselves on
+        // close, which would leave the controller holding a freed window.
+        window.isReleasedWhenClosed = false
 
         super.init(window: window)
 
@@ -63,6 +57,13 @@ final class FloatingWindowController: NSWindowController, NSWindowDelegate {
 
     private func closeFloating() {
         close()
+        Self.shared = nil
+    }
+
+    /// Any close path — Cmd-W, performClose, system teardown — must clear the
+    /// singleton, or the next toolbar press "closes" an already-closed window
+    /// and appears to do nothing.
+    func windowWillClose(_ notification: Notification) {
         Self.shared = nil
     }
 
@@ -84,7 +85,15 @@ enum FloatingWindowFrame {
     static func load() -> NSRect {
         guard let raw = UserDefaults.standard.string(forKey: key) else { return fallback }
         let rect = NSRectFromString(raw)
-        return rect.width > 100 && rect.height > 100 ? rect : fallback
+        guard rect.width > 100, rect.height > 100 else { return fallback }
+        // AppKit's automatic frame constraining is skipped for borderless
+        // windows, so a frame saved on a display that is now unplugged would
+        // restore entirely off-screen — with no title bar to drag it back and no
+        // entry in the Window menu.
+        guard NSScreen.screens.contains(where: { $0.visibleFrame.intersects(rect) }) else {
+            return fallback
+        }
+        return rect
     }
 
     static func store(_ rect: NSRect) {
@@ -106,6 +115,9 @@ struct FloatingContentView: View {
     @State private var interval: TimeInterval = AutoAdvance.loadInterval()
     @State private var showsControls = false
     @State private var error: GalleryError?
+    /// Guards against two concurrent loads finishing out of order — the same
+    /// pattern FolderStore uses.
+    @State private var loadToken = 0
 
     private var current: MediaItem? {
         items.indices.contains(index) ? items[index] : nil
@@ -116,7 +128,11 @@ struct FloatingContentView: View {
             Color.black
 
             if let current {
+                // Without an explicit identity two consecutive videos take the
+                // same branch at the same position, so SwiftUI reuses the page
+                // and its @State player — the first clip just keeps playing.
                 page(for: current)
+                    .id(current.id)
             } else if let error {
                 Text(error.localizedDescription)
                     .font(.caption)
@@ -130,8 +146,12 @@ struct FloatingContentView: View {
             if showsControls { controls }
         }
         .onHover { showsControls = $0 }
-        .task { await load() }
-        .task(id: "\(autoAdvance)-\(interval)-\(index)") { await advance() }
+        .task(id: shuffled) { await load() }
+        // The id must include the sequence: on first appearance `advance()` runs
+        // with an empty `items`, returns immediately, and without `items.count`
+        // in the id it would never be restarted once the load lands — leaving the
+        // window stuck on the first item forever.
+        .task(id: "\(autoAdvance)-\(interval)-\(index)-\(items.count)") { await advance() }
     }
 
     @ViewBuilder
@@ -154,8 +174,9 @@ struct FloatingContentView: View {
                 button("xmark", help: "关闭悬浮窗", action: onClose)
                 Spacer()
                 button(shuffled ? "shuffle.circle.fill" : "shuffle", help: "随机顺序") {
+                    // Reload is driven by .task(id: shuffled), so it is tied to
+                    // the view lifecycle and cancelled properly.
                     shuffled.toggle()
-                    Task { await load() }
                 }
                 button(autoAdvance ? "pause.fill" : "play.fill", help: "自动前进") {
                     autoAdvance.toggle()
@@ -189,8 +210,19 @@ struct FloatingContentView: View {
     }
 
     private func load() async {
+        loadToken += 1
+        let token = loadToken
         do {
-            let page = try await client.mediaPage(path: "", offset: 0, limit: FolderStore.pageSize)
+            // A random window into the library rather than always the first
+            // page: otherwise the floating window is permanently a slideshow of
+            // the same 150 files out of six figures.
+            let probe = try await client.mediaPage(path: "", offset: 0, limit: 1)
+            let span = max(probe.total - FolderStore.pageSize, 0)
+            let offset = span > 0 ? Int.random(in: 0...span) : 0
+            let page = try await client.mediaPage(
+                path: "", offset: offset, limit: FolderStore.pageSize
+            )
+            guard token == loadToken else { return }
             let (sequence, _) = MediaOrder.sequence(
                 from: page.items,
                 entry: nil,
@@ -201,8 +233,10 @@ struct FloatingContentView: View {
             index = 0
             error = nil
         } catch let galleryError as GalleryError {
+            guard token == loadToken else { return }
             error = galleryError
         } catch {
+            guard token == loadToken else { return }
             self.error = .badResponse
         }
     }
@@ -215,5 +249,12 @@ struct FloatingContentView: View {
         index = next
         scale = 1
     }
+}
+
+/// A borderless NSWindow refuses key status by default, which makes keyboard
+/// shortcuts inert. Overriding it is the only way to grant it.
+final class FloatingPanel: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
 }
 #endif

@@ -9,8 +9,10 @@ struct SeededGenerator: RandomNumberGenerator {
     private var state: UInt64
 
     init(seed: UInt64) {
-        // Avoid the zero state, which would make splitmix64 degenerate.
-        state = seed == 0 ? 0x9E37_79B9_7F4A_7C15 : seed
+        // No special case for zero: it is splitmix64's canonical initial state,
+        // not a degenerate one. Remapping it would only make seed 0 and
+        // 0x9E3779B97F4A7C15 produce identical sequences.
+        state = seed
     }
 
     mutating func next() -> UInt64 {
@@ -33,10 +35,6 @@ enum MediaOrder {
     static func shuffled(_ items: [MediaItem], seed: UInt64) -> [MediaItem] {
         var generator = SeededGenerator(seed: seed)
         return items.shuffled(using: &generator)
-    }
-
-    static func shuffled(_ items: [MediaItem]) -> [MediaItem] {
-        shuffled(items, seed: UInt64.random(in: 1...UInt64.max))
     }
 
     /// Builds the sequence to hand the viewer.

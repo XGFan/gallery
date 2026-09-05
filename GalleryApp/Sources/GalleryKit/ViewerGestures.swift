@@ -32,12 +32,17 @@ enum ViewerGesture {
 
     static let dismissDistanceThreshold: CGFloat = 120
     static let dismissVelocityThreshold: CGFloat = 800
+    /// Even a fast flick must travel this far. Without it a short diagonal flick
+    /// (25pt across, 40pt down) clears vertical dominance and closes the viewer
+    /// on what the user experienced as a swipe.
+    static let dismissMinimumTravel: CGFloat = 60
 
     /// Commit the dismiss on either a long enough drag or a fast enough flick.
     static func shouldCommitDismiss(translation: CGSize, velocity: CGSize, scale: CGFloat) -> Bool {
         guard isDismissDrag(translation: translation, scale: scale) else { return false }
-        return translation.height > dismissDistanceThreshold
-            || velocity.height > dismissVelocityThreshold
+        if translation.height > dismissDistanceThreshold { return true }
+        return velocity.height > dismissVelocityThreshold
+            && translation.height > dismissMinimumTravel
     }
 
     /// Visual feedback while dragging to dismiss: 1 → 0 as the drag progresses.
@@ -105,6 +110,18 @@ enum AutoAdvance {
 
     static func loadEnabled() -> Bool { UserDefaults.standard.bool(forKey: enabledKey) }
     static func storeEnabled(_ value: Bool) { UserDefaults.standard.set(value, forKey: enabledKey) }
+
+    /// How long to dwell on an item before advancing.
+    ///
+    /// A video is given its full duration: a 3-second timer would tear down a
+    /// five-minute clip three seconds in, killing playback and the connection.
+    /// The chosen rule is "photos use the interval, videos play to the end",
+    /// falling back to the interval when the duration is unknown.
+    static func dwellTime(for item: MediaItem, interval: TimeInterval) -> TimeInterval {
+        guard item.isVideo else { return interval }
+        guard let duration = item.durationSec, duration > 0 else { return interval }
+        return Swift.max(interval, duration)
+    }
 
     /// Advancing wraps: reaching the end continues from the start, so leaving a
     /// slideshow running never silently stops.

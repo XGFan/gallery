@@ -135,7 +135,7 @@ struct FolderView: View {
             Button(action: startShuffle) {
                 Image(systemName: "shuffle")
             }
-            .disabled(mediaEntries.isEmpty)
+            .disabled(shuffleSequence.isEmpty)
             .accessibilityIdentifier("shuffle-button")
 
             Toggle(isOn: $store.recursive) {
@@ -158,6 +158,15 @@ struct FolderView: View {
             if case .media(let m) = entry { return m }
             return nil
         }
+    }
+
+    /// What a shuffle would actually play. Isolated mode drops videos, so an
+    /// all-video folder yields nothing — the button must look disabled rather
+    /// than silently doing nothing when pressed.
+    private var shuffleSequence: [MediaItem] {
+        MediaOrder.sequence(
+            from: mediaEntries, entry: nil, mixed: MixedModePreference.load()
+        ).items
     }
 
     /// Shuffle is an action, not a view: it opens the same left/right viewer

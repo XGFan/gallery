@@ -53,6 +53,16 @@ enum MasonryLayout {
         items.first { visible.contains($0.id) }?.id
     }
 
+    /// How far the computed target must sit from the current count before the
+    /// column count actually changes.
+    ///
+    /// Without this, `round(base / magnification)` has a hard boundary: at base 2
+    /// the flip sits at magnification 1.333, and a real finger jitters far more
+    /// than the ±0.01 that flips it. Each flip re-partitions the whole wall and
+    /// queues another scroll correction, which is felt as judder. Same reasoning
+    /// as the image tier's enter/exit gap in ViewerGesture.
+    static let columnHysteresis = 0.6
+
     /// Column count a pinch should produce.
     ///
     /// Spreading the fingers (magnification > 1) means "bigger images", which is
@@ -60,12 +70,14 @@ enum MasonryLayout {
     static func columnCount(
         base: Int,
         magnification: CGFloat,
+        current: Int,
         min minimum: Int,
         max maximum: Int
     ) -> Int {
-        guard magnification > 0 else { return base }
-        let target = (Double(base) / magnification).rounded()
-        return Swift.min(Swift.max(Int(target), minimum), maximum)
+        guard magnification > 0 else { return current }
+        let raw = Double(base) / Double(magnification)
+        guard abs(raw - Double(current)) >= columnHysteresis else { return current }
+        return Swift.min(Swift.max(Int(raw.rounded()), minimum), maximum)
     }
 }
 
@@ -99,6 +111,12 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
     @State private var visibleIDs: Set<Item.ID> = []
     /// Column count when the current pinch began.
     @State private var pinchBaseColumns: Int?
+    /// Captured once per pinch. Re-deriving it on every step would let it drift:
+    /// `visibleIDs` is fed by LazyVStack's onAppear, whose render window reaches
+    /// above the viewport, so the "earliest visible" item creeps upward with
+    /// each step. Re-partitioning also fires onAppear/onDisappear for items
+    /// moving between columns, and SwiftUI does not order those across siblings.
+    @State private var pinchAnchor: Item.ID?
 
     var body: some View {
         // The width comes from an enclosing GeometryReader, not from a probe in
@@ -152,7 +170,12 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
                 }
             }
             .scrollIndicators(.hidden)
-            .gesture(pinch(scrollProxy: scrollProxy))
+            // Simultaneous, not exclusive: UIScrollView's pan has no touch-count
+            // limit, so a two-finger pinch with any drift also scrolls. Freezing
+            // the scroll for the duration stops the two from fighting.
+            .simultaneousGesture(pinch(scrollProxy: scrollProxy))
+            .scrollDisabled(pinchBaseColumns != nil)
+            .onDisappear { endPinch() }
             }
         }
     }
@@ -166,19 +189,22 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
         MagnifyGesture()
             .onChanged { value in
                 let base = pinchBaseColumns ?? columnCount
-                if pinchBaseColumns == nil { pinchBaseColumns = base }
+                if pinchBaseColumns == nil {
+                    pinchBaseColumns = base
+                    pinchAnchor = MasonryLayout.anchorID(items: items, visible: visibleIDs)
+                }
 
                 let target = MasonryLayout.columnCount(
                     base: base,
                     magnification: value.magnification,
+                    current: columnCount,
                     min: columnRange.lowerBound,
                     max: columnRange.upperBound
                 )
                 guard target != columnCount else { return }
 
-                let anchor = MasonryLayout.anchorID(items: items, visible: visibleIDs)
                 columnCount = target
-                if let anchor {
+                if let anchor = pinchAnchor {
                     // Re-partitioning happens in the same update; scrolling back
                     // to the anchor in the next runloop pass keeps it in view.
                     DispatchQueue.main.async {
@@ -186,6 +212,14 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
                     }
                 }
             }
-            .onEnded { _ in pinchBaseColumns = nil }
+            .onEnded { _ in endPinch() }
+    }
+
+    /// Also called from onDisappear: `onEnded` does not fire when SwiftUI
+    /// cancels a gesture (incoming call, backgrounding), and a stale base would
+    /// make the *next* pinch compute from the wrong starting count.
+    private func endPinch() {
+        pinchBaseColumns = nil
+        pinchAnchor = nil
     }
 }

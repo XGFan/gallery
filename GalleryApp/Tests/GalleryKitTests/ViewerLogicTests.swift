@@ -50,9 +50,9 @@ final class ViewerGestureTests: XCTestCase {
         )
         XCTAssertTrue(
             ViewerGesture.shouldCommitDismiss(
-                translation: CGSize(width: 0, height: 40), velocity: fast, scale: 1
+                translation: CGSize(width: 0, height: 80), velocity: fast, scale: 1
             ),
-            "a fast flick commits"
+            "a fast flick that actually travels commits"
         )
         XCTAssertFalse(
             ViewerGesture.shouldCommitDismiss(translation: slow, velocity: slow, scale: 1),
@@ -60,12 +60,30 @@ final class ViewerGestureTests: XCTestCase {
         )
     }
 
+    /// A short diagonal flick clears vertical dominance but is felt as a swipe,
+    /// not as a dismiss.
+    func testShortFlickDoesNotDismiss() {
+        XCTAssertFalse(
+            ViewerGesture.shouldCommitDismiss(
+                translation: CGSize(width: 25, height: 40),
+                velocity: CGSize(width: 0, height: 900),
+                scale: 1
+            ),
+            "40pt of travel is a swipe, not a dismiss"
+        )
+    }
+
     /// A single threshold made a pinch hovering near it swap the KFImage URL
     /// repeatedly, each swap flashing the placeholder — what read as "jumping".
     func testOriginalTierHasHysteresis() {
-        // Rising: the original is not fetched until well past the enter point.
+        // Rising: both assertions must pass currentlyUsingOriginal: false, or
+        // they take the exit branch and never exercise originalEnterScale at all.
         XCTAssertFalse(ViewerGesture.shouldUseOriginal(scale: 1.7, currentlyUsingOriginal: false))
-        XCTAssertTrue(ViewerGesture.shouldUseOriginal(scale: 1.9, currentlyUsingOriginal: true))
+        XCTAssertFalse(
+            ViewerGesture.shouldUseOriginal(scale: 1.5, currentlyUsingOriginal: false),
+            "between the two thresholds, a *rising* pinch must not switch yet"
+        )
+        XCTAssertTrue(ViewerGesture.shouldUseOriginal(scale: 1.9, currentlyUsingOriginal: false))
 
         // Falling: already on the original, it stays there between the two
         // thresholds instead of flipping back immediately.
@@ -100,6 +118,29 @@ final class AutoAdvanceTests: XCTestCase {
         XCTAssertNil(AutoAdvance.nextIndex(current: 0, count: 0))
         XCTAssertEqual(AutoAdvance.nextIndex(current: -1, count: 3), 0)
         XCTAssertEqual(AutoAdvance.nextIndex(current: 99, count: 3), 0)
+    }
+}
+
+extension AutoAdvanceTests {
+    private func item(video: Bool, duration: Double?) -> MediaItem {
+        MediaItem(
+            raw: .init(name: "x", path: "x", width: 1, height: 1, durationSec: duration),
+            type: video ? .video : .image
+        )
+    }
+
+    /// A 3s timer would tear a five-minute clip down three seconds in.
+    func testVideoDwellsForItsDuration() {
+        XCTAssertEqual(AutoAdvance.dwellTime(for: item(video: false, duration: nil), interval: 3), 3)
+        XCTAssertEqual(AutoAdvance.dwellTime(for: item(video: true, duration: 300), interval: 3), 300)
+        XCTAssertEqual(
+            AutoAdvance.dwellTime(for: item(video: true, duration: nil), interval: 3), 3,
+            "unknown duration falls back to the interval"
+        )
+        XCTAssertEqual(
+            AutoAdvance.dwellTime(for: item(video: true, duration: 1), interval: 3), 3,
+            "a clip shorter than the interval still gets the full interval"
+        )
     }
 }
 
@@ -193,17 +234,47 @@ final class MasonryAnchorTests: XCTestCase {
 
     /// Spreading the fingers means bigger images, which is fewer columns.
     func testPinchMapsToColumnCount() {
-        XCTAssertEqual(MasonryLayout.columnCount(base: 4, magnification: 2, min: 1, max: 8), 2)
-        XCTAssertEqual(MasonryLayout.columnCount(base: 4, magnification: 0.5, min: 1, max: 8), 8)
-        XCTAssertEqual(MasonryLayout.columnCount(base: 4, magnification: 1, min: 1, max: 8), 4)
+        XCTAssertEqual(
+            MasonryLayout.columnCount(base: 4, magnification: 2, current: 4, min: 1, max: 8), 2
+        )
+        XCTAssertEqual(
+            MasonryLayout.columnCount(base: 4, magnification: 0.5, current: 4, min: 1, max: 8), 8
+        )
+        XCTAssertEqual(
+            MasonryLayout.columnCount(base: 4, magnification: 1, current: 4, min: 1, max: 8), 4,
+            "no magnification, no change"
+        )
     }
 
     func testPinchRespectsRangeAndDegenerateInput() {
-        XCTAssertEqual(MasonryLayout.columnCount(base: 4, magnification: 100, min: 2, max: 8), 2)
-        XCTAssertEqual(MasonryLayout.columnCount(base: 4, magnification: 0.001, min: 1, max: 5), 5)
         XCTAssertEqual(
-            MasonryLayout.columnCount(base: 3, magnification: 0, min: 1, max: 8), 3,
+            MasonryLayout.columnCount(base: 4, magnification: 100, current: 4, min: 2, max: 8), 2
+        )
+        XCTAssertEqual(
+            MasonryLayout.columnCount(base: 4, magnification: 0.001, current: 4, min: 1, max: 5), 5
+        )
+        XCTAssertEqual(
+            MasonryLayout.columnCount(base: 3, magnification: 0, current: 3, min: 1, max: 8), 3,
             "a zero magnification must not divide by zero"
+        )
+    }
+
+    /// Without hysteresis a finger hovering near the boundary flips the count
+    /// back and forth, each flip re-partitioning the whole wall.
+    func testColumnCountHasHysteresis() {
+        // base 2 flips at magnification 1.333; jitter around it must not flip.
+        for magnification in [1.30, 1.333, 1.36] {
+            XCTAssertEqual(
+                MasonryLayout.columnCount(
+                    base: 2, magnification: magnification, current: 2, min: 1, max: 5
+                ),
+                2,
+                "magnification \(magnification) is inside the dead zone"
+            )
+        }
+        // A decisive spread still changes it.
+        XCTAssertEqual(
+            MasonryLayout.columnCount(base: 2, magnification: 2.0, current: 2, min: 1, max: 5), 1
         )
     }
 }
