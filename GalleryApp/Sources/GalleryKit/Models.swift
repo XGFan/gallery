@@ -21,6 +21,31 @@ struct MediaItem: Decodable, Identifiable, Hashable, Sendable {
     var id: String { path }
     var isVideo: Bool { type == .video }
 
+    /// Sizes are decoded leniently on purpose.
+    ///
+    /// The backend tags `Size` with `omitempty`, which *does* apply to `int` —
+    /// so a medium whose size probe has not run yet (freshly scanned, or a video
+    /// whose ffprobe failed) serialises with no `width`/`height` at all. Making
+    /// them required would fail the decode at the top level and take the whole
+    /// page down over one un-probed file. Zero then falls through to the
+    /// portrait fallback in `aspectRatio`.
+    /// Declared explicitly: providing `init(from:)` stops Swift from
+    /// synthesising these. The snake_case `duration_sec` is handled by the
+    /// decoder's key strategy, so the name here stays camelCase.
+    enum CodingKeys: String, CodingKey {
+        case type, name, path, width, height, durationSec
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(Kind.self, forKey: .type)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        path = try container.decode(String.self, forKey: .path)
+        width = try container.decodeIfPresent(Int.self, forKey: .width) ?? 0
+        height = try container.decodeIfPresent(Int.self, forKey: .height) ?? 0
+        durationSec = try container.decodeIfPresent(Double.self, forKey: .durationSec)
+    }
+
     /// Width / height. Falls back to 2:3 (the library skews portrait) when the
     /// backend has not probed the size yet, so the wall never divides by zero.
     var aspectRatio: Double {

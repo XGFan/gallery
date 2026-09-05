@@ -78,6 +78,28 @@ final class GalleryClientDecodingTests: XCTestCase {
         XCTAssertEqual(empty.aspectRatioFallbackCheck, 2.0 / 3.0, accuracy: 0.001)
     }
 
+    /// The backend tags `Size` with `omitempty`, which applies to `int` too: a
+    /// medium whose size probe has not run yet arrives with no width/height at
+    /// all. Required fields would fail the decode at the top level and take the
+    /// entire page down over one un-probed file.
+    func testMediaPageSurvivesItemsWithoutSize() async throws {
+        let json = """
+        {"items":[
+          {"type":"image","name":"probed.jpg","path":"p/probed.jpg","width":100,"height":200},
+          {"type":"image","name":"unprobed.jpg","path":"p/unprobed.jpg"},
+          {"type":"video","name":"noprobe.mp4","path":"p/noprobe.mp4"}
+        ],"total":3,"offset":0,"limit":3}
+        """
+        StubURLProtocol.handler = { _ in .init(body: Data(json.utf8)) }
+
+        let page = try await stubbedClient().mediaPage(path: "p", offset: 0, limit: 3)
+
+        XCTAssertEqual(page.items.count, 3, "one un-probed item must not drop the whole page")
+        XCTAssertEqual(page.items[1].width, 0)
+        XCTAssertEqual(page.items[1].aspectRatio, 2.0 / 3.0, accuracy: 0.001, "falls back to portrait")
+        XCTAssertTrue(page.items[2].isVideo)
+    }
+
     /// A proxy's 502 error page is HTML too. Reporting it as "you're on the
     /// wrong network" sends the user to debug their Wi-Fi while the backend is
     /// merely restarting.
