@@ -141,6 +141,83 @@ type TraverseNode struct {
 	mu          sync.RWMutex // Protects concurrent access
 }
 
+// --- Concurrent access to a live tree ---
+//
+// The tree is mutated in place while it is being served: Locate inserts
+// subdirectories under the write lock, and the scanner replaces Images/Videos
+// under it too — all of that runs concurrently with HTTP handlers walking the
+// same nodes, because the server starts listening before the first scan
+// finishes. Every cold start is that window.
+//
+// Reading these fields directly is therefore a data race, and for the map it is
+// not a subtle one: Go turns a concurrent map iteration and write into
+// `fatal error: concurrent map iteration and map write`, which no recover can
+// catch — the whole process dies. Reproduced under `go test -race`, and it
+// fataled on 3 of 6 plain runs.
+//
+// So every read path goes through these. They are cheap: the map accessor
+// copies pointers, and the slice accessors copy only the 3-word header. Reading
+// elements from a snapshot header stays valid because the scanner only ever
+// appends past the length a reader captured.
+
+// subdirs is the child nodes, snapshotted under the read lock.
+func (dn *TraverseNode) subdirs() []*TraverseNode {
+	dn.mu.RLock()
+	defer dn.mu.RUnlock()
+	out := make([]*TraverseNode, 0, len(dn.Directories))
+	for _, sub := range dn.Directories {
+		out = append(out, sub)
+	}
+	return out
+}
+
+// NamedNode pairs a child with the key it is filed under, for the callers that
+// need both.
+type NamedNode struct {
+	Name string
+	Node *TraverseNode
+}
+
+func (dn *TraverseNode) namedSubdirs() []NamedNode {
+	dn.mu.RLock()
+	defer dn.mu.RUnlock()
+	out := make([]NamedNode, 0, len(dn.Directories))
+	for name, sub := range dn.Directories {
+		out = append(out, NamedNode{Name: name, Node: sub})
+	}
+	return out
+}
+
+func (dn *TraverseNode) subdirCount() int {
+	dn.mu.RLock()
+	defer dn.mu.RUnlock()
+	return len(dn.Directories)
+}
+
+func (dn *TraverseNode) imageSlice() []ImageNode {
+	dn.mu.RLock()
+	defer dn.mu.RUnlock()
+	return dn.Images
+}
+
+func (dn *TraverseNode) videoSlice() []VideoNode {
+	dn.mu.RLock()
+	defer dn.mu.RUnlock()
+	return dn.Videos
+}
+
+func (dn *TraverseNode) coverIndex() int {
+	dn.mu.RLock()
+	defer dn.mu.RUnlock()
+	return dn.CoverIndex
+}
+
+func (dn *TraverseNode) otherSlice() []Node {
+	dn.mu.RLock()
+	defer dn.mu.RUnlock()
+	return dn.Others
+}
+
 // Locate finds or creates a node at the given path
 func (dn *TraverseNode) Locate(path string) *TraverseNode {
 	if path == "" || path == "/" {
@@ -176,6 +253,11 @@ func (dn *TraverseNode) Locate(path string) *TraverseNode {
 
 // Load applies size cache to all images
 func (dn *TraverseNode) Load(sizeCache map[string]Size) {
+	// Under the write lock: this rewrites elements in place while HTTP handlers
+	// may be reading the same slices. The recursion below stays outside it —
+	// holding a parent's lock across a subtree walk would block the scanner
+	// from inserting anywhere beneath it.
+	dn.mu.Lock()
 	for i := range dn.Images {
 		if size, ok := sizeCache[dn.Images[i].Path]; ok {
 			dn.Images[i].Size = size
@@ -186,13 +268,15 @@ func (dn *TraverseNode) Load(sizeCache map[string]Size) {
 			dn.Videos[i].Size = size
 		}
 	}
-	for _, sub := range dn.Directories {
+	dn.mu.Unlock()
+	for _, sub := range dn.subdirs() {
 		sub.Load(sizeCache)
 	}
 }
 
 // LoadTagsAndCaptions applies tag and caption caches
 func (dn *TraverseNode) LoadTagsAndCaptions(tagCache map[string][]TagInfo, captionCache map[string]string, blacklist utils.Set[string]) {
+	dn.mu.Lock()
 	for i := range dn.Images {
 		path := dn.Images[i].Path
 		if tags, ok := tagCache[path]; ok {
@@ -223,7 +307,9 @@ func (dn *TraverseNode) LoadTagsAndCaptions(tagCache map[string][]TagInfo, capti
 			dn.Videos[i].Caption = caption
 		}
 	}
-	for _, sub := range dn.Directories {
+	dn.mu.Unlock()
+
+	for _, sub := range dn.subdirs() {
 		sub.LoadTagsAndCaptions(tagCache, captionCache, blacklist)
 	}
 }
@@ -236,17 +322,17 @@ func (dn *TraverseNode) Dump() map[string]Size {
 }
 
 func (dn *TraverseNode) dumpRecursive(result map[string]Size) {
-	for _, img := range dn.Images {
+	for _, img := range dn.imageSlice() {
 		if img.Size != EmptySize {
 			result[img.Path] = img.Size
 		}
 	}
-	for _, vid := range dn.Videos {
+	for _, vid := range dn.videoSlice() {
 		if vid.Size != EmptySize {
 			result[vid.Path] = vid.Size
 		}
 	}
-	for _, sub := range dn.Directories {
+	for _, sub := range dn.subdirs() {
 		sub.dumpRecursive(result)
 	}
 }
@@ -260,7 +346,7 @@ func (dn *TraverseNode) DumpMeta() (map[string][]TagInfo, map[string]string) {
 }
 
 func (dn *TraverseNode) dumpMetaRecursive(tags map[string][]TagInfo, captions map[string]string) {
-	for _, img := range dn.Images {
+	for _, img := range dn.imageSlice() {
 		if len(img.Tags) > 0 {
 			tags[img.Path] = img.Tags
 		}
@@ -268,7 +354,7 @@ func (dn *TraverseNode) dumpMetaRecursive(tags map[string][]TagInfo, captions ma
 			captions[img.Path] = img.Caption
 		}
 	}
-	for _, vid := range dn.Videos {
+	for _, vid := range dn.videoSlice() {
 		if len(vid.Tags) > 0 {
 			tags[vid.Path] = vid.Tags
 		}
@@ -276,7 +362,7 @@ func (dn *TraverseNode) dumpMetaRecursive(tags map[string][]TagInfo, captions ma
 			captions[vid.Path] = vid.Caption
 		}
 	}
-	for _, sub := range dn.Directories {
+	for _, sub := range dn.subdirs() {
 		sub.dumpMetaRecursive(tags, captions)
 	}
 }
@@ -286,13 +372,24 @@ func (dn *TraverseNode) CleanupRecursively(currentScanID int64) int {
 	deletedCount := 0
 
 	// Cleanup directories
-	for name, sub := range dn.Directories {
+	for _, entry := range dn.namedSubdirs() {
+		name, sub := entry.Name, entry.Node
 		deletedCount += sub.CleanupRecursively(currentScanID)
 		if sub.LastScanID != currentScanID {
+			// Deleting from the map is a write, so it needs the write lock even
+			// though the walk above took a snapshot.
+			dn.mu.Lock()
 			delete(dn.Directories, name)
+			dn.mu.Unlock()
 			deletedCount++
 		}
 	}
+
+	// Filtering republishes both slices, which readers may be holding. Under the
+	// write lock so a reader sees either the old header or the new one, never a
+	// half-written one.
+	dn.mu.Lock()
+	defer dn.mu.Unlock()
 
 	// Cleanup images (filter out those without size or not scanned)
 	validImages := make([]ImageNode, 0, len(dn.Images))
@@ -321,16 +418,18 @@ func (dn *TraverseNode) CleanupRecursively(currentScanID int64) int {
 
 // ToStructureOnly creates a copy with only structural info
 func (dn *TraverseNode) ToStructureOnly() *TraverseNode {
-	images := make([]ImageNode, len(dn.Images))
-	for i, img := range dn.Images {
+	sourceImages := dn.imageSlice()
+	images := make([]ImageNode, len(sourceImages))
+	for i, img := range sourceImages {
 		images[i] = ImageNode{
 			Node: Node{Name: img.Name, Path: img.Path},
 			Size: EmptySize,
 		}
 	}
 
-	videos := make([]VideoNode, len(dn.Videos))
-	for i, vid := range dn.Videos {
+	sourceVideos := dn.videoSlice()
+	videos := make([]VideoNode, len(sourceVideos))
+	for i, vid := range sourceVideos {
 		videos[i] = VideoNode{
 			Node: Node{Name: vid.Name, Path: vid.Path},
 			Size: EmptySize,
@@ -338,7 +437,8 @@ func (dn *TraverseNode) ToStructureOnly() *TraverseNode {
 	}
 
 	dirs := make(map[string]*TraverseNode)
-	for name, sub := range dn.Directories {
+	for _, entry := range dn.namedSubdirs() {
+		name, sub := entry.Name, entry.Node
 		dirs[name] = sub.ToStructureOnly()
 	}
 
@@ -346,9 +446,9 @@ func (dn *TraverseNode) ToStructureOnly() *TraverseNode {
 		Node:        Node{Name: dn.Name, Path: dn.Path},
 		Images:      images,
 		Videos:      videos,
-		Others:      dn.Others,
+		Others:      dn.otherSlice(),
 		Directories: dirs,
-		CoverIndex:  dn.CoverIndex,
+		CoverIndex:  dn.coverIndex(),
 	}
 }
 
@@ -459,24 +559,24 @@ func (dn *TraverseNode) Video() []VideoNode {
 
 // ScanImages collects all images recursively
 func (dn *TraverseNode) ScanImages(result *[]ImageNode) {
-	*result = append(*result, dn.Images...)
-	for _, sub := range dn.Directories {
+	*result = append(*result, dn.imageSlice()...)
+	for _, sub := range dn.subdirs() {
 		sub.ScanImages(result)
 	}
 }
 
 // ScanVideos collects all videos recursively
 func (dn *TraverseNode) ScanVideos(result *[]VideoNode) {
-	*result = append(*result, dn.Videos...)
-	for _, sub := range dn.Directories {
+	*result = append(*result, dn.videoSlice()...)
+	for _, sub := range dn.subdirs() {
 		sub.ScanVideos(result)
 	}
 }
 
 // Explore returns the directory's immediate contents for API
 func (dn *TraverseNode) Explore() *SimpleDirectory {
-	var subDirectories = make([]DirNode, 0, len(dn.Directories))
-	for _, directory := range dn.Directories {
+	var subDirectories = make([]DirNode, 0, dn.subdirCount())
+	for _, directory := range dn.subdirs() {
 		subDirectories = append(subDirectories, DirNode{
 			Node: Node{
 				Name: directory.Name,
@@ -487,9 +587,9 @@ func (dn *TraverseNode) Explore() *SimpleDirectory {
 	}
 	return &SimpleDirectory{
 		Directories: subDirectories,
-		Images:      dn.Images,
-		Videos:      dn.Videos,
-		Others:      dn.Others,
+		Images:      dn.imageSlice(),
+		Videos:      dn.videoSlice(),
+		Others:      dn.otherSlice(),
 	}
 }
 
@@ -502,7 +602,7 @@ func (dn *TraverseNode) Album() []DirNode {
 
 // ScanAlbum collects all album directories recursively
 func (dn *TraverseNode) ScanAlbum(result *[]DirNode) {
-	for _, sub := range dn.Directories {
+	for _, sub := range dn.subdirs() {
 		if sub.HasImages() || sub.HasVideos() {
 			*result = append(*result, DirNode{
 				Node: Node{
@@ -526,7 +626,7 @@ func (dn *TraverseNode) HasMedia() bool {
 	if dn.HasImages() || dn.HasVideos() {
 		return true
 	}
-	for _, sub := range dn.Directories {
+	for _, sub := range dn.subdirs() {
 		if sub.HasMedia() {
 			return true
 		}
@@ -543,7 +643,7 @@ func (dn *TraverseNode) HasMedia() bool {
 // docs/adr/0007.
 func (dn *TraverseNode) ToTree() map[string]interface{} {
 	m := make(map[string]interface{})
-	for _, node := range dn.Directories {
+	for _, node := range dn.subdirs() {
 		if node.HasMedia() {
 			m[node.Name] = node.ToTree()
 		}
@@ -569,7 +669,8 @@ func (dn *TraverseNode) Random(flatten bool, kind MediaKind) (NodeWithParent, er
 		return dn.sampleAt(images, videos, rand.Intn(localChoice)), nil
 	}
 
-	totalChoice := localChoice + len(dn.Directories)
+	subs := dn.subdirs()
+	totalChoice := localChoice + len(subs)
 	if totalChoice == 0 {
 		return NodeWithParent{}, errors.New("cannot find media")
 	}
@@ -580,14 +681,16 @@ func (dn *TraverseNode) Random(flatten bool, kind MediaKind) (NodeWithParent, er
 
 	restIndex := index - localChoice
 	nextDn := dn
-	// Directories is a map, and Go randomizes map iteration order, so the same
-	// restIndex reaches a different subdirectory on every call. The sampler
-	// relies on that for its randomness at this level.
+	// subdirs() builds its slice by ranging the map, and Go randomizes map
+	// iteration order, so the same restIndex reaches a different subdirectory on
+	// every call. The sampler relies on that for its randomness at this level.
+	// The snapshot is taken once above and used for both the count and the walk:
+	// two snapshots could disagree if the scanner inserted between them.
 	//
 	// The break is load-bearing: without it, every directory after restIndex
 	// hits zero would overwrite nextDn again, and the descent would always end
 	// up in whichever subdirectory the map happened to yield last.
-	for _, node := range dn.Directories {
+	for _, node := range subs {
 		if restIndex != 0 {
 			restIndex--
 		} else {
@@ -606,11 +709,11 @@ func (dn *TraverseNode) Random(flatten bool, kind MediaKind) (NodeWithParent, er
 func (dn *TraverseNode) sampleCandidates(kind MediaKind) ([]ImageNode, []VideoNode) {
 	switch kind {
 	case MediaKindVideo:
-		return nil, dn.Videos
+		return nil, dn.videoSlice()
 	case MediaKindAll:
-		return dn.Images, dn.Videos
+		return dn.imageSlice(), dn.videoSlice()
 	default:
-		return dn.Images, nil
+		return dn.imageSlice(), nil
 	}
 }
 
@@ -640,11 +743,18 @@ func (dn *TraverseNode) sampleAt(images []ImageNode, videos []VideoNode, index i
 
 // Cover returns the cover image for this directory
 func (dn *TraverseNode) Cover() ImageNode {
-	if dn.HasImages() {
-		return dn.Images[dn.CoverIndex]
+	// One snapshot, then index into it. Re-reading the field between the length
+	// check and the subscript is what turns a concurrent republish into an
+	// out-of-range panic.
+	if images := dn.imageSlice(); len(images) > 0 {
+		index := dn.coverIndex()
+		if index < 0 || index >= len(images) {
+			index = 0
+		}
+		return images[index]
 	}
-	if dn.HasVideos() {
-		vid := dn.Videos[0]
+	if videos := dn.videoSlice(); len(videos) > 0 {
+		vid := videos[0]
 		if vid.Size.Width > 0 && vid.Size.Height > 0 {
 			return ImageNode{
 				Node: Node{
@@ -655,12 +765,9 @@ func (dn *TraverseNode) Cover() ImageNode {
 			}
 		}
 	}
-	if dn.HasSubDirectories() {
-		for _, sub := range dn.Directories {
-			subCover := sub.Cover()
-			if !subCover.IsEmpty() {
-				return subCover
-			}
+	for _, sub := range dn.subdirs() {
+		if subCover := sub.Cover(); !subCover.IsEmpty() {
+			return subCover
 		}
 	}
 	return EmptyNode
@@ -668,15 +775,15 @@ func (dn *TraverseNode) Cover() ImageNode {
 
 // HasImages checks if directory has images
 func (dn *TraverseNode) HasImages() bool {
-	return dn.Images != nil && len(dn.Images) > 0
+	return len(dn.imageSlice()) > 0
 }
 
 // HasVideos checks if directory has videos
 func (dn *TraverseNode) HasVideos() bool {
-	return dn.Videos != nil && len(dn.Videos) > 0
+	return len(dn.videoSlice()) > 0
 }
 
 // HasSubDirectories checks if directory has subdirectories
 func (dn *TraverseNode) HasSubDirectories() bool {
-	return dn.Directories != nil && len(dn.Directories) > 0
+	return dn.subdirCount() > 0
 }
