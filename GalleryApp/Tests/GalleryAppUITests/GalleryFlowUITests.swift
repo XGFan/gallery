@@ -97,6 +97,15 @@ final class GalleryFlowUITests: XCTestCase {
         #endif
     }
 
+    /// A drag from the very left edge — the interactive pop gesture, not a
+    /// content swipe. `swipeRight()` starts in the middle of the screen and
+    /// never reaches the edge recogniser.
+    private func edgeSwipeBack() {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.002, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: end)
+    }
+
     /// The visible text of an element. macOS leaves `label` empty for a SwiftUI
     /// `Text` and puts the string in `value` instead.
     private func text(of element: XCUIElement) -> String {
@@ -255,6 +264,52 @@ final class GalleryFlowUITests: XCTestCase {
             text(of: title) == name
         }
         #endif
+    }
+
+    /// The left-edge swipe goes back.
+    ///
+    /// The screen hides the navigation bar to draw its own chrome, and UIKit
+    /// disables the interactive pop gesture along with the bar — so this was
+    /// silently gone, on the one platform where it is how people go back. See
+    /// InteractivePopEnabler; the code here used to claim the gesture "stays
+    /// with the system", and this test is why that claim is no longer there.
+    func testEdgeSwipeGoesBack() throws {
+        #if os(macOS)
+        throw XCTSkip("the edge swipe is a touch gesture — the desktop pushes inside a split view")
+        #else
+        _ = firstFolderCell()
+        let title = control("top-title-button")
+        require(title, "the top bar is missing", timeout: 15)
+        let root = text(of: title)
+
+        // On the root there is nothing to pop, and the gesture must decline
+        // rather than run. Enabling it by clearing the recogniser's delegate —
+        // the recipe found everywhere — lets it start here and leaves the
+        // navigation controller wedged; the last step is what catches that.
+        edgeSwipeBack()
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertEqual(text(of: title), root, "swiping at the root went somewhere")
+
+        openFolderAndWaitForTitle(toChangeFrom: root)
+        edgeSwipeBack()
+        waitUntil("the edge swipe did not pop — the app is still on \(text(of: title))") {
+            text(of: title) == root
+        }
+
+        // And the stack still works afterwards.
+        openFolderAndWaitForTitle(toChangeFrom: root)
+        #endif
+    }
+
+    /// Opens the first folder on the wall and waits until the title says so.
+    @discardableResult
+    private func openFolderAndWaitForTitle(toChangeFrom previous: String) -> String {
+        let title = control("top-title-button")
+        firstFolderCell().press()
+        waitUntil("opening a folder no longer goes anywhere") {
+            text(of: title) != previous
+        }
+        return text(of: title)
     }
 
     /// The switcher's whole job: `image` turns the wall into every descendant

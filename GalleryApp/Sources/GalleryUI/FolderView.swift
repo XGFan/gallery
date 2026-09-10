@@ -37,10 +37,12 @@ struct FolderView: View {
             .overlay(alignment: .bottom) { bottomChrome }
             .task { await store.loadInitial() }
             #if os(iOS)
-            // The self-drawn top bar replaces it. Left-edge swipe still pops —
-            // that gesture stays with the system, which is why the drawer opens
-            // from a button instead of from the edge.
+            // The self-drawn top bar replaces it. Hiding the bar also disables
+            // the left-edge swipe, so that has to be put back by hand — see
+            // InteractivePopEnabler. The drawer opens from a button rather than
+            // from the edge precisely so the two do not fight over it.
             .toolbar(.hidden, for: .navigationBar)
+            .background { InteractivePopEnabler().frame(width: 0, height: 0) }
             #endif
             .navigationTitle(store.displayName)
             // The leaf test needs the tree, and the tree arrives after the first
@@ -105,6 +107,13 @@ struct FolderView: View {
             .accessibilityIdentifier(WallCell.identifier(for: entry))
         }
         .accessibilityIdentifier("masonry-wall")
+        // Edge to edge at the top, the way it already is at the bottom.
+        // Otherwise the notch's inset is a dead black band: the status bar is
+        // hidden (Info.plist), so nothing is drawn in it at all, and the wall —
+        // which is the product — starts 59pt down for no one's benefit. The
+        // chrome floats above and keeps its own inset, so nothing that has to
+        // be readable ends up behind the island.
+        .ignoresSafeArea(edges: .top)
     }
 
     private var columnBinding: Binding<Int> {
