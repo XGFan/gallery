@@ -48,6 +48,9 @@ struct RootView: View {
         #else
         .fullScreenCover(item: viewerBinding) { context in
             viewer(context)
+                // The player paints its own black. Clearing the cover's is what
+                // lets the wall show through as a drag-to-dismiss fades it.
+                .presentationBackground(.clear)
         }
         #endif
         #if os(iOS)

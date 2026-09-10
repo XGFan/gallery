@@ -34,24 +34,41 @@ struct ViewerView: View {
     /// Reported up by the page in view; decides whether a drag pans or dismisses.
     @State private var currentScale: CGFloat = 1
     @State private var dismissTranslation: CGSize = .zero
+    /// True from the first sample of a dismiss drag until the gesture ends *or
+    /// is cancelled*. The chrome leaves for the duration: buttons that stay put
+    /// while the picture slides out from under them read as a broken screen.
+    ///
+    /// `@GestureState` rather than `@State` because SwiftUI resets it on
+    /// cancellation too — a second finger landing mid-drag cancels the gesture
+    /// without ever calling `onEnded`, and a plain flag would stay true and
+    /// keep the close button hidden for the life of the presentation.
+    @GestureState private var isDragging = false
+    /// Set once a dismiss is committed. The picture finishes the trajectory the
+    /// finger started — smaller and gone — before the cover is torn down.
+    @State private var isClosing = false
     @State private var autoAdvance: Bool = AutoAdvance.loadEnabled()
     @State private var interval: TimeInterval = AutoAdvance.loadInterval()
 
-    private var dismissProgress: CGFloat {
-        ViewerGesture.dismissProgress(translation: dismissTranslation)
+    /// 0 at rest, 1 when fully dismissed. Tracks the finger during the drag and
+    /// runs to the end on commit.
+    private var collapse: CGFloat {
+        isClosing ? 1 : ViewerGesture.dismissProgress(translation: dismissTranslation)
     }
 
     var body: some View {
         ZStack {
+            // Fades all the way out so the wall shows through — on iOS the
+            // cover's own background is cleared for the same reason.
             Color.black
-                .opacity(1 - dismissProgress * 0.6)
+                .opacity(1 - collapse)
                 .ignoresSafeArea()
 
             pager
-                .scaleEffect(1 - dismissProgress * 0.25)
+                .scaleEffect(1 - collapse * 0.25)
+                .opacity(isClosing ? 0 : 1)
                 .offset(y: max(dismissTranslation.height, 0))
 
-            if showsChrome {
+            if showsChrome, !isDragging, !isClosing {
                 chrome
             }
         }
@@ -68,6 +85,12 @@ struct ViewerView: View {
             requestMoreIfNearEnd()
         }
         .task(id: autoAdvanceTaskID) { await runAutoAdvance() }
+        // The gesture-state reset is the only signal a *cancelled* drag gives.
+        // Without this the picture would stay shrunken and offset after one.
+        .onChange(of: isDragging) { _, dragging in
+            guard !dragging, !isClosing, dismissTranslation != .zero else { return }
+            withAnimation(.spring(duration: 0.25)) { dismissTranslation = .zero }
+        }
         #if os(iOS)
         .statusBarHidden()
         #endif
@@ -116,8 +139,21 @@ struct ViewerView: View {
     /// slightly imperfect horizontal swipe still reaches the pager.
     private var dismissGesture: some Gesture {
         DragGesture(minimumDistance: 14)
+            .updating($isDragging) { value, dragging, transaction in
+                guard !isClosing,
+                      ViewerGesture.isDismissDrag(translation: value.translation, scale: currentScale)
+                else { return }
+                // Sticky for the rest of the gesture: once a dismiss is in
+                // flight the chrome stays away even through a wobbly sample.
+                dragging = true
+                // Also what the reset animates with when the gesture ends.
+                transaction.animation = .easeOut(duration: 0.15)
+            }
             .onChanged { value in
-                guard ViewerGesture.isDismissDrag(translation: value.translation, scale: currentScale)
+                // A drag that starts during the closing animation must not
+                // drag a picture that is on its way out.
+                guard !isClosing,
+                      ViewerGesture.isDismissDrag(translation: value.translation, scale: currentScale)
                 else { return }
                 // No implicit animation during the drag — it must track the finger.
                 dismissTranslation = value.translation
@@ -127,7 +163,7 @@ struct ViewerView: View {
                 // curved swipe (right 200pt, then hooking down to 320pt) from
                 // paging *and* slamming the viewer shut: every intermediate
                 // sample failed the dominance test, so no dismiss ever started.
-                guard dismissTranslation != .zero else { return }
+                guard !isClosing, dismissTranslation != .zero else { return }
 
                 let commit = ViewerGesture.shouldCommitDismiss(
                     translation: value.translation,
@@ -135,11 +171,24 @@ struct ViewerView: View {
                     scale: currentScale
                 )
                 if commit {
-                    onClose()
+                    finishDismiss()
                 } else {
                     withAnimation(.spring(duration: 0.25)) { dismissTranslation = .zero }
                 }
             }
+    }
+
+    /// Carry the drag through to the end, then close without the presentation's
+    /// own slide: that animation starts from a full-size, opaque player and
+    /// contradicts the shrinking one the finger just left.
+    private func finishDismiss() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            isClosing = true
+        } completion: {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { onClose() }
+        }
     }
 
     private var chrome: some View {
