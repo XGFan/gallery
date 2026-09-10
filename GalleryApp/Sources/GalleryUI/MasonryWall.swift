@@ -122,6 +122,13 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
     /// each step. Re-partitioning also fires onAppear/onDisappear for items
     /// moving between columns, and SwiftUI does not order those across siblings.
     @State private var pinchAnchor: Item.ID?
+    /// Position of each item in the wall's own order.
+    ///
+    /// Rebuilt when the item list changes, not consulted by scanning: the scroll
+    /// report runs on every cell appearing and disappearing, and a linear search
+    /// there is O(items) on the hot path of the one thing ADR-0002 makes a hard
+    /// constraint. A dictionary makes it O(visible cells) instead.
+    @State private var indexByID: [Item.ID: Int] = [:]
 
     var body: some View {
         // The width comes from an enclosing GeometryReader, not from a probe in
@@ -184,6 +191,8 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
             // the scroll for the duration stops the two from fighting.
             .simultaneousGesture(pinch(scrollProxy: scrollProxy))
             .scrollDisabled(pinchBaseColumns != nil)
+            .onAppear(perform: rebuildIndex)
+            .onChange(of: items.count) { _, _ in rebuildIndex() }
             .onDisappear {
                 endPinch()
                 scroll.reset()
@@ -199,8 +208,19 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
     /// the earliest visible item advances monotonically as the wall moves, which
     /// is all a direction needs.
     private func reportScroll() {
-        guard let index = items.firstIndex(where: { visibleIDs.contains($0.id) }) else { return }
+        guard let index = visibleIDs.compactMap({ indexByID[$0] }).min() else { return }
         scroll.report(firstVisibleIndex: index)
+    }
+
+    private func rebuildIndex() {
+        // Not `uniqueKeysWithValues`: that traps on a duplicate, and a rescan
+        // between pages can genuinely hand the same item back twice (the same
+        // reason the paging code trusts the item count over the reported total).
+        // A duplicate must cost a slightly stale index, never the process.
+        indexByID = Dictionary(
+            items.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     /// Pinch to change the column count, keeping the same content under the eye.
