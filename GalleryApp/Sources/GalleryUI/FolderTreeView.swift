@@ -1,35 +1,55 @@
 import SwiftUI
 
-/// The folder tree behind the drawer / sidebar.
+/// The folder navigator behind the drawer / sidebar: one level at a time.
 ///
-/// Two separate hit targets per row, which is the whole point (docs/adr/0007):
-/// the triangle only opens and closes, the rest of the row only navigates.
-/// `List(children:)` cannot express that — it folds expansion into the row's own
-/// tap, so opening a branch to look inside also drags the whole screen to it,
-/// and reaching a deep folder means navigating through every level on the way.
-/// Hence a hand-rolled `LazyVStack` instead.
+/// Not a tree. A header names the level; below it are that level's subfolders,
+/// each with the full width of the panel. See docs/adr/0010 for why the
+/// expandable tree went away.
 ///
-/// Pure presentation: expansion state lives in `TreeStore`, selection comes from
-/// the route.
+/// Two hit targets per branch row, deliberately assigned against the iOS
+/// convention that a trailing `›` means "the whole row opens": the *name*
+/// navigates to the folder, the `›` drills the sidebar into it without moving
+/// the wall. "Everything under Twitter" is one tap that way. The header's name
+/// navigates to the level itself and its `‹` goes back up.
+///
+/// Pure presentation apart from one piece of local state: which level is
+/// showing. It follows the current folder — after any navigation the level is
+/// the current folder's parent, so the folder is highlighted among its siblings
+/// — and stays wherever the user drilled to until the next navigation.
 struct FolderTreeView: View {
-    /// The root's children — the root itself is not drawn as a row.
-    let nodes: [FolderTree.Node]
     let selectedPath: String
-    let isExpanded: (String) -> Bool
-    /// Triangle only: open or close, never navigate.
-    let onToggle: (String) -> Void
-    /// Row only: navigate, never change expansion.
+    /// One level's worth of subfolders.
+    let childrenOf: (String) -> [FolderTree.Node]
+    /// Navigate. The only way out of the sidebar.
     let onSelect: (String) -> Void
 
+    @State private var levelPath = ""
+    /// Which way the next level change slides.
+    @State private var drillingDown = true
+
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 1) {
-                ForEach(visibleNodes) { item in
-                    row(item)
+        VStack(spacing: 0) {
+            header
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(childrenOf(levelPath)) { node in
+                        row(node)
+                    }
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
+            // A new identity per level is what makes the slide a slide: the
+            // old list leaves as the new one enters, instead of rows morphing.
+            .id(levelPath)
+            .transition(.asymmetric(
+                insertion: .move(edge: drillingDown ? .trailing : .leading),
+                removal: .move(edge: drillingDown ? .leading : .trailing)
+            ))
+        }
+        .clipped()
+        .onChange(of: selectedPath, initial: true) { _, path in
+            levelPath = TreeStore.parentPath(of: path)
         }
         // No container-level identifier here. SwiftUI pushes an identifier on a
         // non-element container down onto its leaves, overwriting the ones the
@@ -38,104 +58,122 @@ struct FolderTreeView: View {
         // the note on WallCell's identifier in FolderView.
     }
 
-    /// One row's worth of indentation.
-    private static let indent: CGFloat = 14
-    /// Also the row height. The triangle has to be a thumb's worth on iOS or it
-    /// is simply not hittable next to a full-width row target — this is the one
-    /// fragile part of the two-target design, so the region is sized explicitly
-    /// rather than left to whatever the glyph happens to measure. macOS inherits
-    /// the same generous region, where it costs nothing.
-    private static let hitSize: CGFloat = 44
+    private static let rowHeight: CGFloat = 44
 
-    private struct VisibleNode: Identifiable {
-        let node: FolderTree.Node
-        let depth: Int
-        var id: String { node.path }
+    private var levelName: String {
+        levelPath.isEmpty ? "图库" : String(levelPath.split(separator: "/").last ?? "")
     }
 
-    /// The tree flattened to the rows that are actually on screen.
-    ///
-    /// Recursing in the view hierarchy instead would nest a container per level
-    /// and build every descendant of an open branch eagerly, which defeats the
-    /// `LazyVStack` — the drawer opens onto a library thousands of folders deep.
-    /// Flattening keeps one lazy list no matter how deep the expansion goes.
-    private var visibleNodes: [VisibleNode] {
-        var result: [VisibleNode] = []
-        func walk(_ list: [FolderTree.Node], depth: Int) {
-            for node in list {
-                result.append(VisibleNode(node: node, depth: depth))
-                if isExpanded(node.path) {
-                    walk(node.children, depth: depth + 1)
+    private func show(level path: String, down: Bool) {
+        drillingDown = down
+        withAnimation(.easeOut(duration: 0.25)) { levelPath = path }
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        let isSelected = levelPath == selectedPath
+        return HStack(spacing: 4) {
+            if !levelPath.isEmpty {
+                Button {
+                    show(level: TreeStore.parentPath(of: levelPath), down: false)
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("tree-back")
             }
-        }
-        walk(nodes, depth: 0)
-        return result
-    }
-
-    private func row(_ item: VisibleNode) -> some View {
-        let node = item.node
-        let isSelected = node.path == selectedPath
-
-        return HStack(spacing: 0) {
-            Color.clear.frame(width: CGFloat(item.depth) * Self.indent, height: 1)
-
-            disclosure(node)
 
             Button {
-                onSelect(node.path)
+                onSelect(levelPath)
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "folder")
-                        .font(.system(size: 13))
-                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-                    Text(node.name)
-                        .font(.callout)
-                        .fontWeight(isSelected ? .semibold : .regular)
-                        .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                HStack(spacing: 8) {
+                    if levelPath.isEmpty {
+                        Image(systemName: "photo.stack")
+                            .font(.system(size: 14, weight: .semibold))
+                            // Decorative: the header's accessible name is the
+                            // level's name alone.
+                            .accessibilityHidden(true)
+                    }
+                    Text(levelName)
+                        .font(.headline)
                         .lineLimit(1)
+                        .truncationMode(.middle)
                     Spacer(minLength: 0)
                 }
-                .padding(.trailing, 10)
-                .frame(maxWidth: .infinity, minHeight: Self.hitSize, alignment: .leading)
-                // The label is mostly empty space to the right of the name; the
-                // whole strip has to accept the tap, not just the glyphs.
+                .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                .padding(.horizontal, levelPath.isEmpty ? 12 : 4)
+                .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             // On the button, not inside its label: a Button absorbs the
             // accessibility of its content and would hide an inner identifier.
+            .accessibilityIdentifier("tree-level")
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 0.5)
+        }
+    }
+
+    // MARK: - Rows
+
+    private func row(_ node: FolderTree.Node) -> some View {
+        let isSelected = node.path == selectedPath
+        return HStack(spacing: 0) {
+            Button {
+                onSelect(node.path)
+            } label: {
+                Text(node.name)
+                    .font(.callout)
+                    .fontWeight(isSelected ? .semibold : .regular)
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                    .lineLimit(1)
+                    // A folder's distinguishing part is usually its tail.
+                    .truncationMode(.middle)
+                    .padding(.leading, 12)
+                    .padding(.trailing, 8)
+                    .frame(maxWidth: .infinity, minHeight: Self.rowHeight, alignment: .leading)
+                    // The label is mostly empty space to the right of the name;
+                    // the whole strip has to accept the tap, not just the glyphs.
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
             .accessibilityIdentifier("tree-node:\(node.path)")
+
+            if !node.isLeaf {
+                Button {
+                    show(level: node.path, down: true)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        // Not `.secondary`: over the drawer's material that
+                        // style goes vibrant and vanishes against a dark wall.
+                        // The old tree's triangles were invisible for exactly
+                        // this reason (docs/adr/0010).
+                        .foregroundStyle(Color.primary.opacity(0.35))
+                        .frame(width: 44, height: Self.rowHeight)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("tree-disclosure:\(node.path)")
+            }
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color.primary.opacity(0.1)).frame(height: 0.5).padding(.leading, 12)
         }
         .background {
             if isSelected {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.15))
+                    .fill(Color.accentColor.opacity(0.18))
             }
-        }
-    }
-
-    @ViewBuilder
-    private func disclosure(_ node: FolderTree.Node) -> some View {
-        if node.isLeaf {
-            // A leaf draws no triangle but still reserves its width, otherwise
-            // names at the same depth would not line up with each other.
-            Color.clear.frame(width: Self.hitSize, height: Self.hitSize)
-        } else {
-            let expanded = isExpanded(node.path)
-            Button {
-                onToggle(node.path)
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.secondary)
-                    .rotationEffect(.degrees(expanded ? 90 : 0))
-                    .frame(width: Self.hitSize, height: Self.hitSize)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .animation(.easeInOut(duration: 0.2), value: expanded)
-            .accessibilityIdentifier("tree-disclosure:\(node.path)")
         }
     }
 }

@@ -57,11 +57,6 @@ struct RootView: View {
         .background { MultiTouchInstaller().frame(width: 0, height: 0) }
         #endif
         .task { await treeStore.load() }
-        // The tree opens itself down to wherever the user is, so finding the
-        // current folder in it is never a hunt.
-        .onChange(of: navigator.currentPath, initial: true) { _, path in
-            treeStore.revealAncestors(of: path)
-        }
     }
 
     // MARK: - Platform shell
@@ -98,8 +93,8 @@ struct RootView: View {
                 .frame(width: Self.drawerWidth)
                 .background(.regularMaterial)
                 .ignoresSafeArea(edges: .bottom)
-                // Parked off-screen rather than conditionally built: the tree
-                // keeps its expansion state and its scroll position across
+                // Parked off-screen rather than conditionally built: the
+                // sidebar keeps its level and its scroll position across
                 // opens, and the slide has something to animate.
                 .offset(x: drawerOpen ? 0 : -(Self.drawerWidth + 24))
                 .shadow(color: .black.opacity(drawerOpen ? 0.4 : 0), radius: 16, x: 4)
@@ -118,9 +113,11 @@ struct RootView: View {
         // Bound to an array rather than a NavigationPath because the tree needs
         // to know where the user is, and a NavigationPath will not say.
         NavigationStack(path: navigatorRoutes) {
+            // Launch lands in `album` (docs/adr/0007). The root keeps its
+            // own view from then on; a jump back to it is a pop, not an arrival.
             FolderView(
                 path: "",
-                view: navigator.rootView,
+                view: .album,
                 client: client,
                 drawerOpen: $drawerOpen
             )
@@ -131,6 +128,12 @@ struct RootView: View {
                     client: client,
                     drawerOpen: $drawerOpen
                 )
+                // A sidebar jump replaces the whole stack, and `[A]` → `[B]`
+                // keeps the same depth. Without an explicit identity SwiftUI
+                // reuses the screen at that depth — `init` runs with B, but the
+                // `@State` store inside was created for A and stays on A. The
+                // sidebar highlighted B while the wall never moved.
+                .id(route)
             }
         }
     }
@@ -139,12 +142,10 @@ struct RootView: View {
 
     @ViewBuilder
     private var treePanel: some View {
-        if let tree = treeStore.tree {
+        if treeStore.tree != nil {
             FolderTreeView(
-                nodes: tree.root.children,
                 selectedPath: navigator.currentPath,
-                isExpanded: { treeStore.isExpanded($0) },
-                onToggle: { treeStore.toggleExpansion($0) },
+                childrenOf: { treeStore.children(of: $0) },
                 onSelect: { path in
                     navigator.jump(to: path, hasChildren: treeStore.hasChildren(path))
                     #if os(iOS)

@@ -188,36 +188,46 @@ final class NavigatorTests: XCTestCase {
         XCTAssertEqual(nav.routes, [Route(path: "X/Y", view: .image)])
     }
 
+    /// Going up to the root is a pop, not an arrival: the stack empties and
+    /// the root screen keeps whatever view it had.
     func testJumpingToTheRootEmptiesTheStack() {
         let nav = Navigator()
         nav.open(folder: "A", from: .explore)
         nav.jump(to: "", hasChildren: true)
 
         XCTAssertTrue(nav.routes.isEmpty, "the root is the stack's root, not an entry in it")
-        XCTAssertEqual(nav.rootView, .album)
         XCTAssertEqual(nav.currentPath, "")
     }
 
-    /// An ancestor that is on the stack is popped to, keeping its own view.
-    func testGoingToAnAncestorOnTheStackPops() {
+    /// An ancestor that is on the stack is popped to, keeping its own view —
+    /// the sidebar's header is the way back up and must feel like Back.
+    func testJumpingToAnAncestorOnTheStackPops() {
         let nav = Navigator()
         nav.open(folder: "A", from: .explore)
         nav.open(folder: "A/B", from: .explore)
         nav.open(folder: "A/B/C", from: .explore)
 
-        nav.goToAncestor(path: "A", hasChildren: true)
+        nav.jump(to: "A", hasChildren: true)
         XCTAssertEqual(nav.routes.map(\.path), ["A"])
         XCTAssertEqual(nav.routes.first?.view, .explore, "popping must not rewrite the view")
     }
 
     /// After a jump the stack holds one deep entry whose ancestors were never
-    /// visited — those are exactly the crumbs the user wants, so they jump.
-    func testGoingToAnAncestorNotOnTheStackJumps() {
+    /// visited — those are exactly what the sidebar's header offers, so they
+    /// jump like anything else.
+    func testJumpingToAnAncestorNotOnTheStackReplacesTheStack() {
         let nav = Navigator()
         nav.jump(to: "A/B/C", hasChildren: false)
 
-        nav.goToAncestor(path: "A", hasChildren: true)
+        nav.jump(to: "A", hasChildren: true)
         XCTAssertEqual(nav.routes, [Route(path: "A", view: .album)])
+    }
+
+    func testJumpingToWhereTheUserAlreadyIsChangesNothing() {
+        let nav = Navigator()
+        nav.open(folder: "A", from: .explore)
+        nav.jump(to: "A", hasChildren: true)
+        XCTAssertEqual(nav.routes, [Route(path: "A", view: .explore)])
     }
 
     func testCurrentPathFollowsTheTopOfTheStack() {
@@ -263,23 +273,35 @@ final class TreeStoreTests: XCTestCase {
         XCTAssertTrue(s.hasChildren("anything"))
     }
 
-    func testRevealingAncestorsOpensEveryLevelButTheLeafItself() {
-        let s = store([String: Any]())
-        s.revealAncestors(of: "A/B/C")
-
-        XCTAssertTrue(s.isExpanded("A"))
-        XCTAssertTrue(s.isExpanded("A/B"))
-        XCTAssertFalse(s.isExpanded("A/B/C"), "the destination itself need not be open")
+    /// One level of the sidebar (docs/adr/0010): the children of a path, in
+    /// the tree's order.
+    func testChildrenOfAPathAreOneLevelOfTheSidebar() {
+        let s = store(["A": ["B": [String: Any](), "C": ["D": [String: Any]()]], "E": [String: Any]()])
+        XCTAssertEqual(s.children(of: "").map(\.name), ["A", "E"])
+        XCTAssertEqual(s.children(of: "A").map(\.name), ["B", "C"])
+        XCTAssertEqual(s.children(of: "A/C").map(\.path), ["A/C/D"])
+        XCTAssertTrue(s.children(of: "A/B").isEmpty, "a leaf has no level beneath it")
     }
 
-    func testCollapsingANodeCollapsesWhatWasOpenBeneathIt() {
-        let s = store([String: Any]())
-        s.revealAncestors(of: "A/B/C/D")
-        XCTAssertTrue(s.isExpanded("A/B"))
+    /// A folder with no media beneath it is reachable through `explore` but is
+    /// not in the tree; the sidebar shows nothing there rather than crashing or
+    /// guessing.
+    func testChildrenOfAPathOutsideTheTreeAreEmpty() {
+        let s = store(["A": [String: Any]()])
+        XCTAssertTrue(s.children(of: "A/nope").isEmpty)
+        XCTAssertTrue(s.children(of: "nope").isEmpty)
+    }
 
-        s.toggleExpansion("A")
-        XCTAssertFalse(s.isExpanded("A"))
-        XCTAssertFalse(s.isExpanded("A/B"), "re-opening A must not explode back to the old shape")
+    func testMissingTreeHasNoLevels() {
+        let s = TreeStore(client: GalleryClient(baseURL: URL(string: "https://example.invalid")!))
+        XCTAssertTrue(s.children(of: "").isEmpty)
+    }
+
+    /// The level that holds a folder is its parent; the root holds itself.
+    func testParentPath() {
+        XCTAssertEqual(TreeStore.parentPath(of: "A/B/C"), "A/B")
+        XCTAssertEqual(TreeStore.parentPath(of: "A"), "")
+        XCTAssertEqual(TreeStore.parentPath(of: ""), "")
     }
 }
 

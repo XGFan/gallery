@@ -206,7 +206,7 @@ final class GalleryFlowUITests: XCTestCase {
             "the two-finger synthesiser is out of date — see StaggeredTouch"
         )
         let cell = firstFolderCell()
-        let title = control("top-title-button")
+        let title = control("top-title")
         require(title, "the top bar is missing", timeout: 15)
         let titleBefore = text(of: title)
         let frame = cell.frame
@@ -278,7 +278,7 @@ final class GalleryFlowUITests: XCTestCase {
         throw XCTSkip("the edge swipe is a touch gesture — the desktop pushes inside a split view")
         #else
         _ = firstFolderCell()
-        let title = control("top-title-button")
+        let title = control("top-title")
         require(title, "the top bar is missing", timeout: 15)
         let root = text(of: title)
 
@@ -304,7 +304,7 @@ final class GalleryFlowUITests: XCTestCase {
     /// Opens the first folder on the wall and waits until the title says so.
     @discardableResult
     private func openFolderAndWaitForTitle(toChangeFrom previous: String) -> String {
-        let title = control("top-title-button")
+        let title = control("top-title")
         firstFolderCell().press()
         waitUntil("opening a folder no longer goes anywhere") {
             text(of: title) != previous
@@ -348,7 +348,7 @@ final class GalleryFlowUITests: XCTestCase {
         _ = firstFolderCell()
 
         let tab = control("view-switcher:album")
-        let title = control("top-title-button")
+        let title = control("top-title")
         require(tab, "the switcher is missing", timeout: 15)
 
         // Asserted on how far the chrome has *moved*, not on where it is.
@@ -439,33 +439,67 @@ final class GalleryFlowUITests: XCTestCase {
         // detail column and has no navigation bar.
         _ = firstMediaCell(timeout: 45)
 
-        let title = control("top-title-button")
+        let title = control("top-title")
         require(title, "the top bar is missing after opening \(name)", timeout: 15)
         XCTAssertEqual(title.label, name, "opened \(title.label), expected \(name)")
     }
 
     // MARK: - The tree
 
-    /// The core of the tree's interaction: the triangle expands and *only*
-    /// expands. Before docs/adr/0007 a parent row could not be opened without
-    /// also navigating, which is what made mid-level folders unreachable.
-    func testTreeDisclosureExpandsWithoutNavigating() {
+    /// The core of the sidebar's interaction (docs/adr/0010): `›` drills the
+    /// sidebar one level down and *only* the sidebar — the wall stays where it
+    /// is, and the drawer stays open.
+    func testDrillingTheSidebarDoesNotNavigate() {
         _ = firstFolderCell()
+        let title = control("top-title")
+        let before = text(of: title)
         openTree()
 
         let disclosure = element(prefix: "tree-disclosure:")
-        require(disclosure, "no expandable node in the tree", timeout: 15)
+        require(disclosure, "no branch node in the sidebar", timeout: 15)
         let path = disclosure.identifier.replacingOccurrences(of: "tree-disclosure:", with: "")
         disclosure.press()
 
-        require(element(prefix: "tree-node:\(path)/"), "the triangle did not expand \(path)")
-        XCTAssertTrue(
-            element(prefix: "tree-node:").exists,
-            "expanding must not dismiss the tree — that is navigation's job, not the triangle's"
-        )
+        require(control("tree-back"), "drilling into \(path) did not produce a level with a way back")
+        require(element(prefix: "tree-node:\(path)/"), "the level under \(path) is empty")
+        XCTAssertEqual(text(of: title), before, "drilling must not navigate — that is the name's job")
     }
 
-    /// And the row navigates. A directory node is a legitimate destination now,
+    /// A sidebar jump replaces the whole navigation stack, so the second jump
+    /// keeps the stack's depth — and a screen reused at the same depth kept its
+    /// old store. The sidebar highlighted B while the wall stayed on A.
+    func testJumpingFromTheSidebarTwiceMovesTheWallTwice() {
+        _ = firstFolderCell()
+        openTree()
+
+        let first = element(prefix: "tree-node:")
+        require(first, "the sidebar never rendered a node")
+        let firstPath = first.identifier.replacingOccurrences(of: "tree-node:", with: "")
+        first.press()
+
+        let title = control("top-title")
+        waitUntil("the first jump went nowhere", timeout: 20) { text(of: title) == Self.name(of: firstPath) }
+
+        // The sidebar follows the navigation: it now shows the level that holds
+        // the first folder, so a sibling is one tap away.
+        openTree()
+        let second = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'tree-node:' AND identifier != %@", "tree-node:\(firstPath)")
+        ).firstMatch
+        require(second, "no second node to jump to")
+        let secondPath = second.identifier.replacingOccurrences(of: "tree-node:", with: "")
+        second.press()
+
+        waitUntil("the second jump left the wall on \(firstPath)", timeout: 20) {
+            text(of: title) == Self.name(of: secondPath)
+        }
+    }
+
+    private static func name(of path: String) -> String {
+        String(path.split(separator: "/").last ?? "")
+    }
+
+    /// And the name navigates. A directory node is a legitimate destination,
     /// not just a leaf.
     func testTappingATreeNodeNavigatesToIt() {
         _ = firstFolderCell()
@@ -479,7 +513,7 @@ final class GalleryFlowUITests: XCTestCase {
 
         // Same virtual-path caveat as testOpeningAnAlbumLandsOnItsPictures:
         // what lands on the wall need not carry this node's path as a prefix.
-        let title = control("top-title-button")
+        let title = control("top-title")
         require(title, "tapping the tree node \(path) did not go anywhere", timeout: 20)
         XCTAssertEqual(title.label, name, "landed on \(title.label), expected \(name)")
 
@@ -497,15 +531,15 @@ final class GalleryFlowUITests: XCTestCase {
     func testRandomOpensThePlayerAndComesBack() {
         _ = firstFolderCell()
 
-        let randomTab = control("view-switcher:random")
-        require(randomTab, "the random tab is missing", timeout: 15)
-        randomTab.press()
+        let randomButton = control("random-button")
+        require(randomButton, "the random button is missing", timeout: 15)
+        randomButton.press()
 
         let close = control("viewer-close")
         require(close, "random did not open the player", timeout: 45)
         close.press()
 
-        require(control("view-switcher:random"), "closing the player should return to the wall")
+        require(control("random-button"), "closing the player should return to the wall")
         _ = firstFolderCell(timeout: 20)
     }
 
@@ -526,9 +560,9 @@ final class GalleryFlowUITests: XCTestCase {
         #else
         _ = firstFolderCell()
 
-        let randomTab = control("view-switcher:random")
-        require(randomTab, "the random tab is missing", timeout: 15)
-        randomTab.press()
+        let randomButton = control("random-button")
+        require(randomButton, "the random button is missing", timeout: 15)
+        randomButton.press()
         require(control("viewer-close"), "random did not open the player", timeout: 45)
 
         // Comfortably past RandomStream.batchSize (30). A sequence that never
@@ -612,9 +646,9 @@ final class GalleryFlowUITests: XCTestCase {
     func testPlayingAVideoKeepsTheAppAlive() throws {
         _ = firstFolderCell()
 
-        let randomTab = control("view-switcher:random")
-        require(randomTab, "the random tab is missing", timeout: 15)
-        randomTab.press()
+        let randomButton = control("random-button")
+        require(randomButton, "the random button is missing", timeout: 15)
+        randomButton.press()
         require(control("viewer-close"), "random did not open the player", timeout: 45)
 
         // Swipe along the stream until a video page shows up. The library is
@@ -651,23 +685,22 @@ final class GalleryFlowUITests: XCTestCase {
 
     // MARK: - Getting back out
 
-    /// The path sheet replaces the breadcrumb the self-drawn chrome has no room
-    /// for. It is the only way back to an ancestor that was never visited — the
-    /// case a jump from the tree creates.
-    func testPathSheetJumpsToAnAncestor() {
+    /// The sidebar's header names the level that holds the current folder, and
+    /// tapping it goes there. It is the way to an ancestor that was never
+    /// visited — the case a jump from the sidebar creates.
+    func testSidebarHeaderNavigatesToTheLevel() {
         firstFolderCell().press()
         _ = firstMediaCell(timeout: 45)
+        openTree()
 
-        let title = control("top-title-button")
-        require(title, "the title is not tappable", timeout: 15)
-        title.press()
+        let level = control("tree-level")
+        require(level, "the sidebar has no header", timeout: 15)
+        let name = text(of: level)
+        XCTAssertNotEqual(name, "", "the header must name the level")
+        level.press()
 
-        let root = control("path-crumb:")
-        require(root, "the path sheet did not open, or the root crumb is missing")
-        root.press()
-
-        require(control("view-switcher:album"), "jumping to the root should land on album")
-        _ = firstFolderCell(timeout: 20)
+        let title = control("top-title")
+        waitUntil("tapping the header did not go to \(name)", timeout: 20) { text(of: title) == name }
     }
 }
 

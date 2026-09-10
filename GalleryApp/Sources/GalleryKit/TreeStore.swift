@@ -1,8 +1,7 @@
 import Foundation
 import Observation
 
-/// Holds the folder tree behind the navigation drawer / sidebar, plus its
-/// expansion state.
+/// Holds the folder tree behind the navigation drawer / sidebar.
 ///
 /// This is a store rather than plain `@State` on the root view for one specific
 /// reason. On iOS the tree is read *only* inside the drawer's content, which
@@ -22,10 +21,6 @@ final class TreeStore {
 
     /// Paths that have at least one child in the tree. See `hasChildren`.
     private var branchPaths: Set<String> = []
-
-    /// Which nodes the user has open. Auto-expansion to the current path adds to
-    /// this rather than fighting it, so a manual collapse stays collapsed.
-    private(set) var expanded: Set<String> = []
 
     private let client: GalleryClient
 
@@ -97,29 +92,26 @@ final class TreeStore {
         return result
     }
 
-    // MARK: - Expansion
+    // MARK: - Levels
 
-    func isExpanded(_ path: String) -> Bool { expanded.contains(path) }
-
-    func toggleExpansion(_ path: String) {
-        if expanded.contains(path) {
-            // Collapsing a node collapses what was open beneath it, so
-            // re-opening it does not explode back to a previous session's shape.
-            expanded = expanded.filter { $0 != path && !$0.hasPrefix(path + "/") }
-        } else {
-            expanded.insert(path)
+    /// The subfolders of `path`, in the tree's own order — one level of the
+    /// sidebar (docs/adr/0010). Empty while the tree is missing, and empty for a
+    /// path the tree does not hold: a folder with no media anywhere beneath it
+    /// is reachable through `explore` but is not in the tree (see `hasChildren`).
+    func children(of path: String) -> [FolderTree.Node] {
+        guard let tree else { return [] }
+        var node = tree.root
+        for segment in path.split(separator: "/") {
+            guard let next = node.children.first(where: { $0.name == segment }) else { return [] }
+            node = next
         }
+        return node.children
     }
 
-    /// Opens every ancestor of `path` so the current folder is visible in the
-    /// tree without the user hunting for it. Additive on purpose — it never
-    /// closes anything the user opened.
-    func revealAncestors(of path: String) {
-        guard !path.isEmpty else { return }
-        var prefix = ""
-        for segment in path.split(separator: "/").dropLast() {
-            prefix = prefix.isEmpty ? String(segment) : prefix + "/" + segment
-            expanded.insert(prefix)
-        }
+    /// The folder above `path`. The root's parent is the root itself, which is
+    /// what lets "the level that holds the current folder" be asked of any path.
+    static func parentPath(of path: String) -> String {
+        guard let slash = path.lastIndex(of: "/") else { return "" }
+        return String(path[..<slash])
     }
 }

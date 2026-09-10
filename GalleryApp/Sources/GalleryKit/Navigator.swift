@@ -4,21 +4,20 @@ import Observation
 /// The navigation stack, plus the one thing the tree needs to know: where the
 /// user currently is.
 ///
-/// Kept as a model rather than as `@State` on the root view because three
-/// separate places drive it — the wall (drilling in), the tree (jumping), and
-/// the path sheet (jumping up) — and two of them live far from the stack.
+/// Kept as a model rather than as `@State` on the root view because two
+/// separate places drive it — the wall (drilling in) and the sidebar (jumping)
+/// — and the sidebar lives far from the stack.
 ///
 /// Every entry point declares which view it lands in. The mapping is the table
-/// in docs/adr/0007; the methods below are that table in code.
+/// in docs/adr/0007; the methods below are that table in code. The root screen
+/// is not part of `routes` — a NavigationStack's root never is — and it opens
+/// in `album` (`RootView`); going back to it keeps whatever view it has.
 @Observable
 @MainActor
 final class Navigator {
-    /// The root screen is not part of `routes` — a NavigationStack's root never
-    /// is — so its view lives here.
-    var rootView: FolderViewKind = .album
     var routes: [Route] = []
 
-    /// The folder on screen. The tree highlights it and expands to reveal it.
+    /// The folder on screen. The sidebar highlights it among its siblings.
     var currentPath: String { routes.last?.path ?? "" }
 
     /// Drilling into a folder from a wall.
@@ -33,39 +32,24 @@ final class Navigator {
         }
     }
 
-    /// Jumping from the tree or the path sheet.
+    /// Jumping from the sidebar.
     ///
-    /// The stack is reset to a single entry so Back returns to the root rather
-    /// than replaying the jump. A node with subfolders lands in `album` (show me
-    /// what is under here); a leaf lands in `image` (there is nothing under
-    /// here, show me the pictures).
+    /// An ancestor that is on the stack is popped to, keeping its own view and
+    /// scroll position — the sidebar's header is the way back up, and going up
+    /// should feel like Back, not like a fresh arrival. Anything else resets the
+    /// stack to a single entry so Back returns to the root rather than replaying
+    /// the jump. A node with subfolders lands in `album` (show me what is under
+    /// here); a leaf lands in `image` (there is nothing under here, show me the
+    /// pictures).
     func jump(to path: String, hasChildren: Bool) {
-        let view: FolderViewKind = hasChildren ? .album : .image
-        if path.isEmpty {
-            rootView = view
-            routes = []
-        } else {
-            routes = [Route(path: path, view: view)]
-        }
-    }
-
-    /// Going to an ancestor from the path sheet.
-    ///
-    /// The crumbs are derived from the current folder's path, which is not the
-    /// same thing as the stack: after a jump the stack holds one deep entry
-    /// whose ancestors were never visited. So an ancestor that *is* on the stack
-    /// is popped to (keeping its own view and scroll position), and one that is
-    /// not is jumped to like any other jump.
-    func goToAncestor(path: String, hasChildren: Bool) {
-        if path.isEmpty, routes.isEmpty { return }
         if path.isEmpty {
             routes = []
             return
         }
-        guard let index = routes.firstIndex(where: { $0.path == path }) else {
-            jump(to: path, hasChildren: hasChildren)
+        if let index = routes.firstIndex(where: { $0.path == path }) {
+            routes.removeSubrange((index + 1)...)
             return
         }
-        routes.removeSubrange((index + 1)...)
+        routes = [Route(path: path, view: hasChildren ? .album : .image)]
     }
 }
