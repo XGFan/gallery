@@ -3,8 +3,8 @@ import SwiftUI
 /// One folder screen.
 ///
 /// It shows one of the three views (`explore` / `album` / `image`) and carries
-/// the switcher that moves between them, plus `random` — which is an action, not
-/// a fourth view. See CONTEXT.md and docs/adr/0007.
+/// the switcher that moves between them, plus the `random` button — an action,
+/// not a fourth view. See CONTEXT.md and docs/adr/0007.
 ///
 /// All of its chrome is self-drawn and floats over the wall: there is no toolbar
 /// and no navigation bar. The wall is the product; the chrome gets out of its
@@ -33,8 +33,11 @@ struct FolderView: View {
 
     var body: some View {
         content
-            .overlay(alignment: .top) { topChrome }
+            .overlay(alignment: .topLeading) { topChrome }
             .overlay(alignment: .bottom) { bottomChrome }
+            .overlay(alignment: .bottomTrailing) {
+                RandomButton(isVisible: scroll.chromeVisible, action: startRandom)
+            }
             .task { await store.loadInitial() }
             #if os(iOS)
             // The self-drawn top bar replaces it. Hiding the bar also disables
@@ -125,14 +128,10 @@ struct FolderView: View {
     private var topChrome: some View {
         TopChrome(
             title: store.displayName,
-            crumbs: crumbs,
             isVisible: scroll.chromeVisible,
             showsBack: !store.path.isEmpty,
             onDrawer: { drawerOpen.toggle() },
-            onBack: { dismiss() },
-            onJump: { path in
-                navigator.goToAncestor(path: path, hasChildren: treeStore.hasChildren(path))
-            }
+            onBack: { dismiss() }
         )
     }
 
@@ -161,13 +160,16 @@ struct FolderView: View {
                     .transition(.opacity)
             }
 
-            ViewSwitcher(
-                views: availableViews,
-                current: store.view,
-                isVisible: scroll.chromeVisible,
-                onSelect: { store.view = $0 },
-                onRandom: startRandom
-            )
+            // A leaf folder offers only `image`, and a strip with one cell is
+            // not a switch — so there is none.
+            if availableViews.count > 1 {
+                ViewSwitcher(
+                    views: availableViews,
+                    current: store.view,
+                    isVisible: scroll.chromeVisible,
+                    onSelect: { store.view = $0 }
+                )
+            }
         }
         // No bottom padding here: the switcher carries its own, and doubling it
         // pushes the capsule visibly off the edge it is supposed to hug.
@@ -198,20 +200,6 @@ struct FolderView: View {
     /// the tree" *is* "album would be empty". See docs/adr/0007.
     private var availableViews: [FolderViewKind] {
         FolderViewKind.available(hasSubfolders: treeStore.hasChildren(store.path))
-    }
-
-    /// Root → … → here. Built from the path rather than from the navigation
-    /// stack, because after a jump the stack holds one deep entry whose
-    /// ancestors were never visited — and those ancestors are exactly what the
-    /// user wants to reach.
-    private var crumbs: [PathCrumb] {
-        var result = [PathCrumb(name: "图库", path: "")]
-        var prefix = ""
-        for segment in store.path.split(separator: "/") {
-            prefix = prefix.isEmpty ? String(segment) : prefix + "/" + segment
-            result.append(PathCrumb(name: String(segment), path: prefix))
-        }
-        return result
     }
 
     // MARK: - Opening things
@@ -245,8 +233,8 @@ struct FolderView: View {
         )
     }
 
-    /// `random` is an action, not a view: the switcher does not stay on it, and
-    /// closing the player puts the user back exactly where they were.
+    /// `random` is an action, not a view: nothing stays selected, and closing
+    /// the player puts the user back exactly where they were.
     ///
     /// The sequence is an unbounded sample stream from the backend, not a
     /// shuffle of what happens to be loaded — see docs/adr/0008.

@@ -1,23 +1,23 @@
 import SwiftUI
 
-/// The four-way switcher: `explore` / `album` / `image`, plus `random`.
+/// The view switcher: `explore` / `album` / `image`.
 ///
 /// Pure presentation — which cells to show, which one is current, and what
 /// happens on a tap all come from the caller. It draws itself as a floating
 /// capsule and takes no layout space, so the caller hangs it off the wall with
 /// `.overlay(alignment: .bottom)`.
 ///
-/// `random` sits in the same strip but is an *action*, not a fourth view: it
-/// samples and enters the player, and never shows as selected. See CONTEXT.md
-/// and docs/adr/0007-0008.
+/// `random` is not in here. It is an action, not a view (CONTEXT.md), and it
+/// has its own button — `RandomButton`. The caller does not show the switcher
+/// at all when it would have a single cell: a strip with one option is not a
+/// switch.
 struct ViewSwitcher: View {
     /// Which view cells to show, in display order. A leaf folder passes fewer
-    /// (docs/adr/0007) — `random` is appended regardless.
+    /// (docs/adr/0007).
     let views: [FolderViewKind]
     let current: FolderViewKind
     let isVisible: Bool
     let onSelect: (FolderViewKind) -> Void
-    let onRandom: () -> Void
 
     var body: some View {
         HStack(spacing: 2) {
@@ -31,15 +31,6 @@ struct ViewSwitcher: View {
                     onSelect(kind)
                 }
             }
-
-            // Always last, always unselected.
-            cell(
-                icon: "shuffle",
-                label: "Random",
-                identifier: "view-switcher:random",
-                isSelected: false,
-                action: onRandom
-            )
         }
         .padding(4)
         .background(.regularMaterial, in: Capsule())
@@ -72,8 +63,8 @@ struct ViewSwitcher: View {
     private static let hiddenOffset: CGFloat = 120
 
     /// Icon over label, the way the Photos segmented control does it. Side by
-    /// side, four cells with words in them do not fit across a 375pt screen
-    /// without truncating.
+    /// side, three cells with words in them do not fit across a 375pt screen
+    /// next to the random button without truncating.
     private func cell(
         icon: String,
         label: String,
