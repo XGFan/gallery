@@ -55,9 +55,6 @@ final class WallColumns {
         count = Swift.min(Swift.max(count - steps, Self.minColumns), Self.maxColumns)
     }
 
-    var canZoomIn: Bool { count > Self.minColumns }
-    var canZoomOut: Bool { count < Self.maxColumns }
-
     #if os(macOS)
     // MARK: - ⌘ + scroll wheel
 

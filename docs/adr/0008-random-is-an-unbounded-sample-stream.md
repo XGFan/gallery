@@ -23,9 +23,12 @@ GET /api/random/{path}?flat=true&type=image|video|all&count=N
 `App.tsx` 的 `requestMode` 映射；tiny-viewer 也不用），所以接口形状可以自由改。
 
 **分布不均匀不修。** `Random()` 在每一层的 Images 与 Directories 之间按个数均分概率，
-一个装 1 张图、另有一个 5000 张子树的目录，那 1 张图会拿到一半的概率；而且
-`core/types.go` 里选子目录的循环没有 `break`，`restIndex` 归零后会被后续每个目录覆盖，
-实际总是下钻到最后一个子目录。这是取样的实现方式，不是要修的缺陷。
+一个装 1 张图、另有一个 5000 张子树的目录，那 1 张图会拿到一半的概率。这是取样的实现
+方式，不是要修的缺陷。
+
+要和它区分开的是另一件事：选子目录的循环原本缺 `break`，`restIndex` 归零后会被后续
+每个目录覆盖，实际总是下钻到 map 恰好最后吐出的那个子目录——那不是"偏斜的取样"，
+是取样根本没按自己的规则跑。`break` 已补上（`core/types.go`）。偏斜保留，失效不保留。
 
 ## Consequences
 

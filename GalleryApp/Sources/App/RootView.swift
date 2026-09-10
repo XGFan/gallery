@@ -141,7 +141,12 @@ struct RootView: View {
                 onToggle: { treeStore.toggleExpansion($0) },
                 onSelect: { path in
                     navigator.jump(to: path, hasChildren: treeStore.hasChildren(path))
+                    #if os(iOS)
+                    // The drawer covers the wall, so it has to get out of the
+                    // way once it has been used. macOS's sidebar is permanent —
+                    // closing it there would collapse the column on every click.
                     drawerOpen = false
+                    #endif
                 }
             )
         } else if let error = treeStore.error {

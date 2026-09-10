@@ -108,6 +108,15 @@ final class ViewerGestureTests: XCTestCase {
 
 final class AutoAdvanceTests: XCTestCase {
     /// Wrapping means leaving a slideshow running never silently stops.
+    /// An unbounded stream has no round to complete: running off the loaded end
+    /// must wait for the next batch, not teleport back to sample #1.
+    func testAdvanceDoesNotWrapWhenUnbounded() {
+        XCTAssertNil(AutoAdvance.nextIndex(current: 29, count: 30, wraps: false))
+        XCTAssertEqual(AutoAdvance.nextIndex(current: 28, count: 30, wraps: false), 29)
+        XCTAssertNil(AutoAdvance.nextIndex(current: 99, count: 30, wraps: false),
+                     "an out-of-range position must not restart the stream either")
+    }
+
     func testAdvanceWraps() {
         XCTAssertEqual(AutoAdvance.nextIndex(current: 0, count: 3), 1)
         XCTAssertEqual(AutoAdvance.nextIndex(current: 2, count: 3), 0)

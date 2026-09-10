@@ -20,7 +20,16 @@ struct ViewerView: View {
     /// denominator rather than inventing one. See docs/adr/0008.
     var unbounded: Bool = false
 
-    @State private var currentID: String?
+    /// The player pages by **position**, not by media identity.
+    ///
+    /// A `random` stream samples with replacement (docs/adr/0008), so the same
+    /// path legitimately shows up more than once — measured at roughly a third
+    /// of 30-item batches against the real library. `MediaItem.id` is the path,
+    /// so identity-based paging put duplicate ids into `ForEach`, made
+    /// `firstIndex(of:)` answer with the *earlier* occurrence, and through that
+    /// silently broke the near-the-end check that fetches the next batch.
+    /// Positions are unique by construction.
+    @State private var currentPosition: Int?
     @State private var showsChrome = true
     /// Reported up by the page in view; decides whether a drag pans or dismisses.
     @State private var currentScale: CGFloat = 1
@@ -51,10 +60,10 @@ struct ViewerView: View {
         .simultaneousGesture(dismissGesture)
         .onAppear {
             guard items.indices.contains(startIndex) else { return }
-            currentID = items[startIndex].id
+            currentPosition = startIndex
             autoAdvance = AutoAdvance.loadEnabled()
         }
-        .onChange(of: currentID) { _, _ in
+        .onChange(of: currentPosition) { _, _ in
             currentScale = 1
             requestMoreIfNearEnd()
         }
@@ -67,24 +76,24 @@ struct ViewerView: View {
     private var pager: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 0) {
-                ForEach(items) { item in
-                    page(for: item)
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    page(for: item, at: index)
                         .containerRelativeFrame(.horizontal)
-                        .id(item.id)
+                        .id(index)
                 }
             }
             .scrollTargetLayout()
         }
         .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $currentID)
+        .scrollPosition(id: $currentPosition)
         .scrollIndicators(.hidden)
         .ignoresSafeArea()
     }
 
     @ViewBuilder
-    private func page(for item: MediaItem) -> some View {
+    private func page(for item: MediaItem, at index: Int) -> some View {
         if item.isVideo {
-            VideoPage(url: client.videoURL(item.path), isActive: currentID == item.id)
+            VideoPage(url: client.videoURL(item.path), isActive: currentPosition == index)
                 .onTapGesture { showsChrome.toggle() }
                 // Lets the E2E tell a video page from an image page without
                 // knowing anything about the library's contents.
@@ -93,7 +102,7 @@ struct ViewerView: View {
             ZoomableImage(
                 displayURL: client.thumbnailURL(item.path),
                 originalURL: client.originalURL(item.path),
-                scale: currentID == item.id ? $currentScale : .constant(1),
+                scale: currentPosition == index ? $currentScale : .constant(1),
                 onSingleTap: { showsChrome.toggle() }
             )
         }
@@ -202,13 +211,13 @@ struct ViewerView: View {
     }
 
     private var currentIndex: Int? {
-        guard let currentID else { return nil }
-        return items.firstIndex { $0.id == currentID }
+        guard let currentPosition, items.indices.contains(currentPosition) else { return nil }
+        return currentPosition
     }
 
     /// Re-created whenever something should restart the timer.
     private var autoAdvanceTaskID: String {
-        "\(autoAdvance)-\(interval)-\(currentID ?? "")"
+        "\(autoAdvance)-\(interval)-\(currentPosition ?? -1)"
     }
 
     private func runAutoAdvance() async {
@@ -220,14 +229,16 @@ struct ViewerView: View {
         try? await Task.sleep(nanoseconds: UInt64(dwell * 1_000_000_000))
         guard !Task.isCancelled, autoAdvance else { return }
         guard let now = currentIndex,
-              let next = AutoAdvance.nextIndex(current: now, count: items.count)
+              let next = AutoAdvance.nextIndex(
+                  current: now, count: items.count, wraps: !unbounded
+              )
         else { return }
         if next < now {
             // Wrapping to the start: animating would sweep the scroll position
             // across the entire LazyHStack.
-            currentID = items[next].id
+            currentPosition = next
         } else {
-            withAnimation(.easeInOut(duration: 0.3)) { currentID = items[next].id }
+            withAnimation(.easeInOut(duration: 0.3)) { currentPosition = next }
         }
     }
 
@@ -241,8 +252,6 @@ struct ViewerView: View {
 }
 
 /// Pinch/double-tap zoom over a remote image.
-///
-/// Not `private`: the macOS floating window renders the same page.
 struct ZoomableImage: View {
     let displayURL: URL
     let originalURL: URL
@@ -333,8 +342,6 @@ struct ZoomableImage: View {
 
 /// A video page. The player is only created for the page actually on screen, so
 /// swiping through a wall of videos does not spin up dozens of decoders.
-///
-/// Not `private`: the macOS floating window renders the same page.
 struct VideoPage: View {
     let url: URL
     let isActive: Bool

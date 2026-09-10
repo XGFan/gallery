@@ -36,11 +36,6 @@ final class RandomStream {
     /// How many items one request asks for. Big enough that swiping does not
     /// outrun the network, small enough to start instantly.
     static let batchSize = 30
-    /// Fetch the next batch once this few unseen items remain ahead.
-    static let refillMargin = 10
-    /// A batch this size or larger is capped by the backend; kept in sync with
-    /// the server's own limit so the two never silently disagree.
-    static let maxBatchSize = 100
 
     let path: String
     private let client: GalleryClient
@@ -70,23 +65,22 @@ final class RandomStream {
     /// Called as the viewer nears the end of what has been fetched. Unlike a
     /// paged folder there is no end to reach — this just keeps the runway ahead
     /// of the user.
+    ///
+    /// Deliberately does not refuse after a failure. An "infinite" stream that
+    /// stops for good on one dropped request is not infinite, and there is
+    /// nothing else to restart it: the near-the-end check only fires when the
+    /// position changes, so a user parked on the last item would never get
+    /// another chance. Retrying is safe because the trigger is a human swipe,
+    /// not a timer.
     func extendIfNeeded() async {
-        guard !isExhausted, !isLoading, error == nil else { return }
-        await fetchBatch()
-    }
-
-    /// Clears a failed batch and tries once more. Same reasoning as
-    /// `FolderStore.retry`: the stream must stop asking on its own after a
-    /// failure, but the user needs a way back.
-    func retry() async {
-        guard error != nil else { return }
-        error = nil
+        guard !isExhausted, !isLoading else { return }
         await fetchBatch()
     }
 
     private func fetchBatch() async {
         guard !isLoading else { return }
         isLoading = true
+        error = nil
         defer { isLoading = false }
 
         do {

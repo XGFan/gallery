@@ -116,11 +116,18 @@ enum AutoAdvance {
         return Swift.max(interval, duration)
     }
 
-    /// Advancing wraps: reaching the end continues from the start, so leaving a
-    /// slideshow running never silently stops.
-    static func nextIndex(current: Int, count: Int) -> Int? {
+    /// Advancing wraps in a bounded sequence: reaching the end continues from
+    /// the start, so leaving a slideshow running never silently stops.
+    ///
+    /// An unbounded one must not wrap. A `random` stream has no "round" to
+    /// complete (docs/adr/0008) — wrapping there would teleport back to sample
+    /// #1 whenever the next batch had not landed yet, inventing exactly the
+    /// cycle that ADR says does not exist. Waiting in place is right: the batch
+    /// is already on its way.
+    static func nextIndex(current: Int, count: Int, wraps: Bool = true) -> Int? {
         guard count > 0 else { return nil }
-        guard current >= 0, current < count else { return 0 }
-        return (current + 1) % count
+        guard current >= 0, current < count else { return wraps ? 0 : nil }
+        guard current + 1 < count else { return wraps ? 0 : nil }
+        return current + 1
     }
 }

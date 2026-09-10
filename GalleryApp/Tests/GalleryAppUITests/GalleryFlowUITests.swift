@@ -172,19 +172,30 @@ final class GalleryFlowUITests: XCTestCase {
             title.frame.maxY <= 0
         }
 
-        // Scrolling up brings it straight back — but only for as long as the
-        // scroll is live: once it settles the chrome leaves again unless the
-        // wall is back at the top, which is the point (idle in the middle of the
-        // wall means a clean screen). So the window here is deliberately shorter
-        // than ScrollIntent.idleDelay; a longer one races that timer and the
-        // test flaps.
-        app.swipeDown()
-        app.swipeDown()
-        waitUntil("scrolling up should bring the switcher back", timeout: 1.2) {
-            tab.frame.minY < screenHeight
+        // Scrolling up brings it straight back — but only while the scroll is
+        // live: once it settles, the chrome leaves again unless the wall is back
+        // at the top. That is the intent (idle in the middle of the wall means a
+        // clean screen), and it makes a single "swipe then assert" a race
+        // against ScrollIntent.idleDelay. So: swipe, look briefly, swipe again.
+        // Each swipe is a fresh chance, and the whole loop still fails if the
+        // chrome never comes back at all.
+        var returned = false
+        for _ in 0..<5 where !returned {
+            app.swipeDown()
+            let deadline = Date().addingTimeInterval(0.8)
+            while Date() < deadline && !returned {
+                returned = tab.frame.minY < screenHeight && title.frame.maxY > 0
+                if !returned { Thread.sleep(forTimeInterval: 0.1) }
+            }
         }
-        waitUntil("scrolling up should bring the top bar back", timeout: 1.2) {
-            title.frame.maxY > 0
+        XCTAssertTrue(returned, "scrolling up never brought the chrome back")
+
+        // And at the top it stays, with no timer involved.
+        for _ in 0..<10 {
+            app.swipeDown()
+        }
+        waitUntil("the chrome should stay up once the wall is back at the top") {
+            tab.frame.minY < screenHeight && title.frame.maxY > 0
         }
     }
 
@@ -314,15 +325,24 @@ final class GalleryFlowUITests: XCTestCase {
         )
         // The counter is the position with no denominator (docs/adr/0008), and
         // it must have moved well past the first batch.
+        //
+        // Required, not `if counter.exists`. Everything above this passes when
+        // the stream quietly stops — swiping past the end of a ScrollView does
+        // not close the player — so this is the only assertion in the test that
+        // can fail. It is also the only thing anywhere that proves iOS's
+        // `fullScreenCover(item:)` re-publishes grown items under an unchanged
+        // id, which is what ViewerContext's stable id is betting on.
         let counter = app.staticTexts.matching(
             NSPredicate(format: "label MATCHES '^[0-9]+$'")
         ).firstMatch
-        if counter.exists, let position = Int(counter.label) {
-            XCTAssertGreaterThan(
-                position, Self.randomBatchSize,
-                "position \(position) never left the opening batch"
-            )
+        require(counter, "the position counter never appeared", timeout: 10)
+        guard let position = Int(counter.label) else {
+            return XCTFail("counter read '\(counter.label)', expected a bare position")
         }
+        XCTAssertGreaterThan(
+            position, Self.randomBatchSize,
+            "position \(position) never left the opening batch — the stream stopped growing"
+        )
     }
 
     /// Tapping a medium opens the single horizontal-swipe player (docs/adr/0001)

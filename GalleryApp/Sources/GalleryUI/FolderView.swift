@@ -43,6 +43,14 @@ struct FolderView: View {
             .toolbar(.hidden, for: .navigationBar)
             #endif
             .navigationTitle(store.displayName)
+            // The leaf test needs the tree, and the tree arrives after the first
+            // render — so a folder can start out offering all three views and
+            // then turn out to be a leaf. Without this the switcher ends up with
+            // no cell selected and no way back to a valid one.
+            .onChange(of: availableViews, initial: true) { _, views in
+                guard !views.contains(store.view), let fallback = views.first else { return }
+                store.view = fallback
+            }
     }
 
     // MARK: - Wall
@@ -115,7 +123,7 @@ struct FolderView: View {
         )
     }
 
-    /// The bottom edge has three tenants that must not stack up. The switcher
+    /// The bottom edge has four tenants that must not stack up. The switcher
     /// and the paging counter are mutually exclusive by construction (one shows
     /// at rest and on the way up, the other only while scrolling down). The
     /// retry bar is the exception: a page failure has to stay visible and

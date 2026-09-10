@@ -94,10 +94,9 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
     let spacing: CGFloat
     let aspectRatio: (Item) -> Double
     let onNearEnd: () -> Void
-    /// Fed the scroll offset so the chrome can get out of the way. A
-    /// `@MainActor` class rather than a closure on purpose: it is Sendable, so
-    /// it can be read from the preference callback without a concurrency
-    /// escape hatch.
+    /// Told which way the wall is moving so the chrome can get out of the way.
+    /// Fed from the cells' own appear/disappear callbacks — see ScrollIntent for
+    /// why measuring an offset does not work here.
     let scroll: ScrollIntent
     @ViewBuilder let cell: (Item, CGSize) -> Cell
 
