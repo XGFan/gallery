@@ -110,7 +110,7 @@ const docTemplate = `{
         },
         "/api/media/{name}": {
             "get": {
-                "description": "Returns all images and videos under the specified directory",
+                "description": "Returns all images and videos under the specified directory.\nPagination is opt-in: pass a positive ` + "`" + `limit` + "`" + ` to receive a MediaPage\n({items, total, offset, limit}) whose items are images and videos merged\ninto one path-sorted sequence. Without ` + "`" + `limit` + "`" + ` the legacy\n{images, videos} shape is returned unchanged.",
                 "produces": [
                     "application/json"
                 ],
@@ -131,6 +131,18 @@ const docTemplate = `{
                         "description": "Flatten search into subdirectories (default: true)",
                         "name": "flat",
                         "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size. When present (and \u003e 0), switches the response to MediaPage",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page offset, only meaningful together with limit (default: 0)",
+                        "name": "offset",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -145,14 +157,14 @@ const docTemplate = `{
         },
         "/api/random/{name}": {
             "get": {
-                "description": "Returns a random image from the specified directory",
+                "description": "Draws a batch of random media from the specified directory. Always returns a JSON array, even for count=1, and an empty array when nothing matches. Sampling is with replacement, so the same item may appear more than once.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "images"
                 ],
-                "summary": "Get a random image",
+                "summary": "Sample random media",
                 "parameters": [
                     {
                         "type": "string",
@@ -166,13 +178,33 @@ const docTemplate = `{
                         "description": "Flatten search into subdirectories (default: true)",
                         "name": "flat",
                         "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "image",
+                            "video",
+                            "all"
+                        ],
+                        "type": "string",
+                        "description": "Media type to sample: image, video or all (default: image)",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "How many items to sample, 1-100 (default: 1)",
+                        "name": "count",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/core.NodeWithParent"
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/core.NodeWithParent"
+                            }
                         }
                     }
                 }
@@ -312,6 +344,9 @@ const docTemplate = `{
                 "caption": {
                     "type": "string"
                 },
+                "duration_sec": {
+                    "type": "number"
+                },
                 "height": {
                     "type": "integer"
                 },
@@ -329,6 +364,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/core.TagInfo"
                     }
+                },
+                "type": {
+                    "type": "string"
                 },
                 "width": {
                     "type": "integer"

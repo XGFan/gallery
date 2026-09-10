@@ -52,6 +52,8 @@ definitions:
     properties:
       caption:
         type: string
+      duration_sec:
+        type: number
       height:
         type: integer
       name:
@@ -64,6 +66,8 @@ definitions:
         items:
           $ref: '#/definitions/core.TagInfo'
         type: array
+      type:
+        type: string
       width:
         type: integer
     type: object
@@ -194,7 +198,12 @@ paths:
       - images
   /api/media/{name}:
     get:
-      description: Returns all images and videos under the specified directory
+      description: |-
+        Returns all images and videos under the specified directory.
+        Pagination is opt-in: pass a positive `limit` to receive a MediaPage
+        ({items, total, offset, limit}) whose items are images and videos merged
+        into one path-sorted sequence. Without `limit` the legacy
+        {images, videos} shape is returned unchanged.
       parameters:
       - description: Directory path
         in: path
@@ -205,6 +214,14 @@ paths:
         in: query
         name: flat
         type: boolean
+      - description: Page size. When present (and > 0), switches the response to MediaPage
+        in: query
+        name: limit
+        type: integer
+      - description: 'Page offset, only meaningful together with limit (default: 0)'
+        in: query
+        name: offset
+        type: integer
       produces:
       - application/json
       responses:
@@ -217,7 +234,9 @@ paths:
       - media
   /api/random/{name}:
     get:
-      description: Returns a random image from the specified directory
+      description: Draws a batch of random media from the specified directory. Always
+        returns a JSON array, even for count=1, and an empty array when nothing matches.
+        Sampling is with replacement, so the same item may appear more than once.
       parameters:
       - description: Directory path
         in: path
@@ -228,14 +247,28 @@ paths:
         in: query
         name: flat
         type: boolean
+      - description: 'Media type to sample: image, video or all (default: image)'
+        enum:
+        - image
+        - video
+        - all
+        in: query
+        name: type
+        type: string
+      - description: 'How many items to sample, 1-100 (default: 1)'
+        in: query
+        name: count
+        type: integer
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/core.NodeWithParent'
-      summary: Get a random image
+            items:
+              $ref: '#/definitions/core.NodeWithParent'
+            type: array
+      summary: Sample random media
       tags:
       - images
   /api/tag:

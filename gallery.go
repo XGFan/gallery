@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -267,22 +268,59 @@ func (g *Gallery) HandleAlbum(c *gin.Context) {
 	c.JSON(200, node.Album())
 }
 
+// maxRandomCount caps one batch of samples. The endpoint is an unbounded
+// sample stream (docs/adr/0008-random-is-an-unbounded-sample-stream.md): a
+// client keeps asking for more instead of asking for everything at once.
+const maxRandomCount = 100
+
+// parseRandomCount clamps ?count= into [1, maxRandomCount]. A missing or
+// unparseable value means a single sample, which is what the endpoint returned
+// before the parameter existed.
+func parseRandomCount(raw string) int {
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return 1
+	}
+	if n > maxRandomCount {
+		return maxRandomCount
+	}
+	return n
+}
+
 // HandleRandom godoc
-// @Summary Get a random image
-// @Description Returns a random image from the specified directory
+// @Summary Sample random media
+// @Description Draws a batch of random media from the specified directory. Always returns a JSON array, even for count=1, and an empty array when nothing matches. Sampling is with replacement, so the same item may appear more than once.
 // @Tags images
 // @Produce json
 // @Param name path string true "Directory path"
 // @Param flat query bool false "Flatten search into subdirectories (default: true)"
-// @Success 200 {object} core.NodeWithParent
+// @Param type query string false "Media type to sample: image, video or all (default: image)" Enums(image, video, all)
+// @Param count query int false "How many items to sample, 1-100 (default: 1)"
+// @Success 200 {array} core.NodeWithParent
 // @Router /api/random/{name} [get]
 func (g *Gallery) HandleRandom(c *gin.Context) {
+	g.Trigger()
 	name := c.Param("name")[1:]
 	flatten := utils.DefaultToTrue(c.Query("flat"))
-	random, _ := utils.Retry(5, func() (core.NodeWithParent, error) {
-		return g.Root.Locate(name).Random(flatten)
-	})
-	c.JSON(200, random)
+	kind := core.ParseMediaKind(c.Query("type"))
+	count := parseRandomCount(c.Query("count"))
+
+	node := g.Root.Locate(name)
+	samples := make([]core.NodeWithParent, 0, count)
+	for i := 0; i < count; i++ {
+		// A descent can land in a subdirectory holding nothing of the requested
+		// kind, so each draw gets a few attempts. A draw that still comes up
+		// empty is skipped rather than failing the request: an empty array is a
+		// valid answer for a directory with no matching media.
+		sample, err := utils.Retry(5, func() (core.NodeWithParent, error) {
+			return node.Random(flatten, kind)
+		})
+		if err != nil {
+			continue
+		}
+		samples = append(samples, sample)
+	}
+	c.JSON(200, samples)
 }
 
 // HandleTag godoc

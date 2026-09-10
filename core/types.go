@@ -94,10 +94,40 @@ type DirNode struct {
 	Cover       ImageNode `json:"cover,omitempty"`
 }
 
-// NodeWithParent holds a node with its parent path
+// NodeWithParent holds a node with its parent path.
+//
+// A random sample may be either an image or a video, so Type is always emitted
+// (never omitempty): the client decodes it as a required field to decide which
+// renderer and which static route to use. DurationSec only carries a value for
+// videos.
 type NodeWithParent struct {
 	ImageNode
-	Parent string `json:"parent"`
+	Parent      string  `json:"parent"`
+	Type        string  `json:"type"`
+	DurationSec float64 `json:"duration_sec,omitempty"`
+}
+
+// MediaKind selects which media types a random sample may draw from.
+type MediaKind int
+
+const (
+	MediaKindImage MediaKind = iota
+	MediaKindVideo
+	MediaKindAll
+)
+
+// ParseMediaKind maps a ?type= query value onto a MediaKind. Anything the
+// client did not spell exactly falls back to images, which is the semantic the
+// endpoint had before the parameter existed.
+func ParseMediaKind(raw string) MediaKind {
+	switch raw {
+	case "video":
+		return MediaKindVideo
+	case "all":
+		return MediaKindAll
+	default:
+		return MediaKindImage
+	}
 }
 
 // TraverseNode represents a directory with all its contents
@@ -486,53 +516,125 @@ func (dn *TraverseNode) ScanAlbum(result *[]DirNode) {
 	}
 }
 
+// HasMedia reports whether this subtree holds any image or video at all.
+//
+// Deliberately not expressed as "Cover() is non-empty". Cover falls back to a
+// video only when that video has a probed size, so a directory full of clips
+// whose ffprobe failed reports no cover while being full of media. Using cover
+// as the media test made those directories vanish from the tree entirely.
+func (dn *TraverseNode) HasMedia() bool {
+	if dn.HasImages() || dn.HasVideos() {
+		return true
+	}
+	for _, sub := range dn.Directories {
+		if sub.HasMedia() {
+			return true
+		}
+	}
+	return false
+}
+
 // ToTree returns a tree representation for API
+//
+// A directory is in the tree exactly when its subtree holds media. That makes
+// the tree and Album agree: a node has children here if and only if Album would
+// list something under it — which is what the native client's view switcher
+// uses to decide whether to offer the recursive views at all. See
+// docs/adr/0007.
 func (dn *TraverseNode) ToTree() map[string]interface{} {
 	m := make(map[string]interface{})
-	if dn.HasSubDirectories() {
-		for _, node := range dn.Directories {
-			if !node.Cover().IsEmpty() {
-				m[node.Name] = node.ToTree()
-			}
+	for _, node := range dn.Directories {
+		if node.HasMedia() {
+			m[node.Name] = node.ToTree()
 		}
 	}
 	return m
 }
 
-// Random returns a random image from the tree
-func (dn *TraverseNode) Random(flatten bool) (NodeWithParent, error) {
-	if flatten {
-		totalChoice := len(dn.Images) + len(dn.Directories)
-		if totalChoice == 0 {
-			return NodeWithParent{}, errors.New("cannot find image")
+// Random draws one media item of the requested kind from the tree.
+//
+// The probability is split evenly across this level's candidates, where a whole
+// subdirectory counts as a single candidate no matter how much it holds. That
+// makes the distribution uneven — a directory holding one image next to a
+// 5000-item subtree gives that one image half the probability — and that is
+// deliberate: see docs/adr/0008-random-is-an-unbounded-sample-stream.md. Do not
+// "fix" it into a uniform draw.
+func (dn *TraverseNode) Random(flatten bool, kind MediaKind) (NodeWithParent, error) {
+	images, videos := dn.sampleCandidates(kind)
+	localChoice := len(images) + len(videos)
+	if !flatten {
+		if localChoice == 0 {
+			return NodeWithParent{}, errors.New("cannot find media")
 		}
-		index := rand.Intn(totalChoice)
-		if index < len(dn.Images) {
-			return NodeWithParent{
-				ImageNode: dn.Images[index],
-				Parent:    dn.Path,
-			}, nil
+		return dn.sampleAt(images, videos, rand.Intn(localChoice)), nil
+	}
+
+	totalChoice := localChoice + len(dn.Directories)
+	if totalChoice == 0 {
+		return NodeWithParent{}, errors.New("cannot find media")
+	}
+	index := rand.Intn(totalChoice)
+	if index < localChoice {
+		return dn.sampleAt(images, videos, index), nil
+	}
+
+	restIndex := index - localChoice
+	nextDn := dn
+	// Directories is a map, and Go randomizes map iteration order, so the same
+	// restIndex reaches a different subdirectory on every call. The sampler
+	// relies on that for its randomness at this level.
+	//
+	// The break is load-bearing: without it, every directory after restIndex
+	// hits zero would overwrite nextDn again, and the descent would always end
+	// up in whichever subdirectory the map happened to yield last.
+	for _, node := range dn.Directories {
+		if restIndex != 0 {
+			restIndex--
 		} else {
-			restIndex := index - len(dn.Images)
-			nextDn := dn
-			for _, node := range dn.Directories {
-				if restIndex != 0 {
-					restIndex--
-				} else {
-					nextDn = node
-				}
-			}
-			return nextDn.Random(flatten)
+			nextDn = node
+			break
 		}
-	} else {
-		if len(dn.Images) == 0 {
-			return NodeWithParent{}, errors.New("cannot find image")
-		}
-		index := rand.Intn(len(dn.Images))
+	}
+	if nextDn == dn {
+		return NodeWithParent{}, errors.New("cannot find media")
+	}
+	return nextDn.Random(flatten, kind)
+}
+
+// sampleCandidates narrows this level's media down to what the requested kind
+// allows.
+func (dn *TraverseNode) sampleCandidates(kind MediaKind) ([]ImageNode, []VideoNode) {
+	switch kind {
+	case MediaKindVideo:
+		return nil, dn.Videos
+	case MediaKindAll:
+		return dn.Images, dn.Videos
+	default:
+		return dn.Images, nil
+	}
+}
+
+// sampleAt resolves an index over the concatenated images+videos candidates
+// into the response node, tagging which of the two it came from.
+func (dn *TraverseNode) sampleAt(images []ImageNode, videos []VideoNode, index int) NodeWithParent {
+	if index < len(images) {
 		return NodeWithParent{
-			ImageNode: dn.Images[index],
+			ImageNode: images[index],
 			Parent:    dn.Path,
-		}, nil
+			Type:      "image",
+		}
+	}
+	video := videos[index-len(images)]
+	return NodeWithParent{
+		ImageNode: ImageNode{
+			Node:    video.Node,
+			Size:    video.Size,
+			Tags:    video.Tags,
+			Caption: video.Caption,
+		},
+		Parent:      dn.Path,
+		Type:        "video",
+		DurationSec: video.DurationSec,
 	}
 }
 
