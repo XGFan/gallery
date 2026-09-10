@@ -91,6 +91,10 @@ struct FolderView: View {
             scroll: scroll
         ) { entry, size in
             Button {
+                // A pinch that starts on a cell has to resize the wall, not
+                // open the cell — and SwiftUI fires a Button on the lift of
+                // the still finger all the same. See MultiTouch.
+                guard MultiTouch.shared.acceptsTap() else { return }
                 open(entry)
             } label: {
                 WallCell(entry: entry, size: size, imageURL: client.wallImageURL(for: entry))

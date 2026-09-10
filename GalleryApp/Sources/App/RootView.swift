@@ -50,6 +50,12 @@ struct RootView: View {
             viewer(context)
         }
         #endif
+        #if os(iOS)
+        // A zero-sized background purely to reach the window: what counts the
+        // fingers is a recogniser installed there, so it sees every touch in
+        // the app rather than only the ones a particular view is handed.
+        .background { MultiTouchInstaller().frame(width: 0, height: 0) }
+        #endif
         .task { await treeStore.load() }
         // The tree opens itself down to wherever the user is, so finding the
         // current folder in it is never a hunt.

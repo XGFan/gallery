@@ -179,6 +179,84 @@ final class GalleryFlowUITests: XCTestCase {
         XCTAssertGreaterThan(cell.frame.height, 20, "cell has no height")
     }
 
+    /// Resizing the wall must not also open what is under the fingers.
+    ///
+    /// The cells are `Button`s, and a SwiftUI tap does not care how many fingers
+    /// are on the screen. The pinch is attached with `.simultaneousGesture` —
+    /// the modifier whose entire meaning is "do not make the other gestures
+    /// fail" — so nothing stopped a pinch from resizing the wall *and* opening
+    /// the album the still finger happened to be resting on. See MultiTouch.
+    func testPinchingTheWallDoesNotOpenACell() throws {
+        #if os(macOS)
+        // Pinch is a touch gesture. The desktop resizes the wall with ⌘+wheel
+        // and from the menu bar, neither of which can carry a stray click along.
+        throw XCTSkip("pinch is a touch gesture — the macOS wall resizes with ⌘+wheel")
+        #else
+        try XCTSkipUnless(
+            StaggeredTouch.isAvailable,
+            "the two-finger synthesiser is out of date — see StaggeredTouch"
+        )
+        let cell = firstFolderCell()
+        let title = control("top-title-button")
+        require(title, "the top bar is missing", timeout: 15)
+        let titleBefore = text(of: title)
+        let frame = cell.frame
+
+        // One finger holds the cell while the other lands late and pulls away.
+        // See StaggeredTouch for why XCTest's own `pinch` cannot show this up —
+        // and note that this synthesised gesture does *not* actually re-column
+        // the wall: whatever SwiftUI's `MagnifyGesture` wants out of an event
+        // stream, a hand-built one does not give it. What it does reproduce is
+        // the half that matters here, the stationary finger reading as a press.
+        StaggeredTouch.pinch(
+            holding: CGPoint(x: frame.midX, y: frame.midY),
+            dragging: CGPoint(x: frame.midX, y: frame.midY + 200),
+            to: CGPoint(x: frame.midX, y: frame.midY + 350)
+        )
+        // Navigation is animated and the wall it lands on has to load, so give
+        // it time to have happened before concluding that it did not.
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertEqual(
+            text(of: title), titleBefore,
+            "the still finger opened a cell — the wall is now showing \(text(of: title))"
+        )
+
+        // The gesture those two fingers are there for still works. Spreading
+        // means "bigger pictures": from the 2 columns setUp pins, the wall goes
+        // to 1 and every cell roughly doubles in width.
+        //
+        // Deliberately not followed by "and a real pinch still re-columns the
+        // wall". XCTest sizes a synthesised pinch to the target's unoccluded
+        // rect, and since the wall runs under the floating chrome that rect
+        // varies with whatever the library happens to put on screen — the same
+        // assertion passed and failed across runs because the travel sometimes
+        // fell short of MasonryLayout.columnHysteresis. It was the synthesiser
+        // being approximate, never the wall, and a test that fails a third of
+        // the time teaches people to ignore it. What is asserted below covers
+        // the risk this fix actually carries: a guard that eats taps.
+        //
+        // One finger still opens what it lands on.
+        //
+        // Tapped by its own identifier rather than through `firstFolderCell()`
+        // twice: an XCUIElement query re-resolves on every access, so reading
+        // the name off "the first cell" and then pressing "the first cell" can
+        // land on two different albums if the wall moved in between — which,
+        // after a gesture that drags, it may well have.
+        let identifier = firstFolderCell().identifier
+        let name = String(
+            identifier.replacingOccurrences(of: "folder-cell:", with: "")
+                .split(separator: "/").last ?? ""
+        )
+        control(identifier).press()
+        waitUntil(
+            "an ordinary tap no longer opens a cell — the guard is eating taps",
+            timeout: 15
+        ) {
+            text(of: title) == name
+        }
+        #endif
+    }
+
     /// The switcher's whole job: `image` turns the wall into every descendant
     /// medium, flattened.
     func testSwitchingToImageProducesMediaWall() {

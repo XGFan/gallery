@@ -517,3 +517,85 @@ final class MasonryAnchorTests: XCTestCase {
         )
     }
 }
+
+/// The touch counting that tells a pinch from a tap. The E2E covers the gesture
+/// it exists for; this covers the ordering that makes it work, which no gesture
+/// can show from the outside.
+@MainActor
+final class MultiTouchTests: XCTestCase {
+    /// The ordinary case: one finger, no reason to refuse anything.
+    func testSingleTouchIsAlwaysATap() {
+        let touch = MultiTouch()
+        let now = Date()
+        touch.report(touchCount: 1, now: now)
+        XCTAssertTrue(touch.acceptsTap(now: now))
+        touch.report(touchCount: 0, now: now)
+        XCTAssertTrue(touch.acceptsTap(now: now))
+    }
+
+    /// The mechanism the whole thing turns on: a tap fires on touch-*up*, and
+    /// the fingers of a pinch lift one at a time. The event that carries the
+    /// first lift still carries both touches, which is what the guard sees —
+    /// by the time SwiftUI runs the action there is only one finger left.
+    func testTapIsRefusedAtTheLiftThatFiresIt() {
+        let touch = MultiTouch()
+        let start = Date()
+        touch.report(touchCount: 1, now: start)
+        touch.report(touchCount: 2, now: start)
+        XCTAssertFalse(touch.acceptsTap(now: start), "two fingers are down")
+
+        touch.report(touchCount: 2, now: start)
+        XCTAssertFalse(touch.acceptsTap(now: start), "the lift that fires the tap")
+
+        touch.report(touchCount: 1, now: start)
+        XCTAssertFalse(touch.acceptsTap(now: start), "the last finger leaving")
+    }
+
+    /// And it lets go again, or the first tap after every pinch would be eaten.
+    func testTapIsAcceptedOnceTheGracePeriodPasses() {
+        let touch = MultiTouch()
+        let start = Date()
+        touch.report(touchCount: 2, now: start)
+
+        let stillInside = start.addingTimeInterval(MultiTouch.graceAfterLift - 0.05)
+        XCTAssertFalse(touch.acceptsTap(now: stillInside))
+
+        let after = start.addingTimeInterval(MultiTouch.graceAfterLift + 0.05)
+        XCTAssertTrue(touch.acceptsTap(now: after))
+    }
+
+    /// The reason this is a decaying timestamp and not a running count. Nothing
+    /// says the watcher hears the end of every sequence it heard the start of —
+    /// UIKit cancels touches, recognisers reset — and a count that missed one
+    /// would sit at two and refuse every tap in the app from then on. That is
+    /// what an intermittent "an ordinary tap no longer opens a cell" turned out
+    /// to be.
+    func testAMissedTouchUpCannotWedgeTapsForGood() {
+        let touch = MultiTouch()
+        let start = Date()
+        touch.report(touchCount: 2, now: start)
+        // ...and nothing ever reports the fingers leaving.
+        XCTAssertTrue(
+            touch.acceptsTap(now: start.addingTimeInterval(1)),
+            "a lost touch-up must cost the grace period, not every tap after it"
+        )
+    }
+
+    /// A long pinch must not go stale halfway through: the moves keep it fresh.
+    func testALongPinchStaysRefusedThroughout() {
+        let touch = MultiTouch()
+        let start = Date()
+        for step in 0...20 {
+            let now = start.addingTimeInterval(Double(step) * 0.1)
+            touch.report(touchCount: 2, now: now)
+            XCTAssertFalse(touch.acceptsTap(now: now), "still pinching at \(step)")
+        }
+    }
+
+    /// Where nothing reports touches — the desktop, or before the watcher
+    /// reaches the window — the guard must cost nothing. A missing watcher may
+    /// not eat taps.
+    func testNoReportsMeansEveryTapGoesThrough() {
+        XCTAssertTrue(MultiTouch().acceptsTap())
+    }
+}
