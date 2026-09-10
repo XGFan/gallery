@@ -1,7 +1,4 @@
 import SwiftUI
-#if os(macOS)
-import AppKit
-#endif
 
 struct RootView: View {
     private let client: GalleryClient
@@ -14,7 +11,6 @@ struct RootView: View {
     /// open — a permanent sidebar is the point there.
     #if os(macOS)
     @State private var drawerOpen = true
-    @State private var scrollZoomMonitor: Any?
     #else
     @State private var drawerOpen = false
     #endif
@@ -75,8 +71,8 @@ struct RootView: View {
         } detail: {
             stack
         }
-        .onAppear(perform: installScrollZoom)
-        .onDisappear(perform: removeScrollZoom)
+        // Process-level, not per-window: see WallColumns.installScrollZoom.
+        .onAppear { WallColumns.installScrollZoom() }
         #else
         ZStack(alignment: .leading) {
             stack
@@ -184,39 +180,6 @@ struct RootView: View {
             get: { drawerOpen ? .all : .detailOnly },
             set: { drawerOpen = $0 != .detailOnly }
         )
-    }
-
-    /// ⌘ + scroll wheel steps the column count, the same thing the web frontend
-    /// does with ctrl/⌘ + wheel.
-    ///
-    /// Installed once here rather than on the wall: a local monitor is
-    /// app-global, and there is one wall per screen on the navigation stack — so
-    /// attaching it per-wall would step the count once for every screen still
-    /// alive underneath.
-    private func installScrollZoom() {
-        guard scrollZoomMonitor == nil else { return }
-        var accumulated: CGFloat = 0
-        scrollZoomMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-            guard event.modifierFlags.contains(.command) else { return event }
-            // A trackpad reports many small deltas per gesture and a mouse wheel
-            // one big one per notch; accumulating to a threshold makes both feel
-            // like discrete steps instead of a slider.
-            accumulated += event.scrollingDeltaY
-            let threshold: CGFloat = 6
-            while abs(accumulated) >= threshold {
-                let direction = accumulated > 0 ? 1 : -1
-                MainActor.assumeIsolated { WallColumns.shared.zoom(direction) }
-                accumulated -= CGFloat(direction) * threshold
-            }
-            // Swallowed: letting it through would scroll the wall at the same
-            // time as resizing it.
-            return nil
-        }
-    }
-
-    private func removeScrollZoom() {
-        if let scrollZoomMonitor { NSEvent.removeMonitor(scrollZoomMonitor) }
-        scrollZoomMonitor = nil
     }
     #endif
 

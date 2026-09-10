@@ -69,13 +69,19 @@ final class ViewerPresenter {
     func requestMore() async {
         guard let extend, let current = context else { return }
         guard let grown = await extend(), grown.count > current.items.count else { return }
+        // Re-check after the await. A batch can land after the user has already
+        // swiped the player away, and writing unconditionally there does not
+        // just leak — it puts the player back on screen. Matching the id as well
+        // as non-nil covers the case where a *different* sequence was opened
+        // while this one's batch was in flight.
+        guard let latest = context, latest.id == current.id else { return }
         // Only the items change: re-using the start index keeps `id` stable, so
         // the presentation is updated rather than replaced.
         context = ViewerContext(
             items: grown,
-            startIndex: current.startIndex,
-            totalCount: current.totalCount,
-            unbounded: current.unbounded
+            startIndex: latest.startIndex,
+            totalCount: latest.totalCount,
+            unbounded: latest.unbounded
         )
     }
 

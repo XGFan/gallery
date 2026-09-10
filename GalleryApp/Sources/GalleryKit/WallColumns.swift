@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+#if os(macOS)
+import AppKit
+#endif
 
 /// How many columns the wall is showing.
 ///
@@ -54,4 +57,42 @@ final class WallColumns {
 
     var canZoomIn: Bool { count > Self.minColumns }
     var canZoomOut: Bool { count < Self.maxColumns }
+
+    #if os(macOS)
+    // MARK: - ⌘ + scroll wheel
+
+    private static var scrollZoomInstalled = false
+
+    /// Installs the ⌘ + wheel handler once per process.
+    ///
+    /// Deliberately not per-view and not per-window. A local event monitor is
+    /// app-global, so one installed by each `RootView` would step the column
+    /// count once per live monitor — and `WindowGroup` hands out a second
+    /// window for ⌘N, which would silently double every notch. Installed once
+    /// and never removed: it costs nothing when ⌘ is not held, and the only
+    /// thing that could remove it is the process exiting anyway.
+    static func installScrollZoom() {
+        guard !scrollZoomInstalled else { return }
+        scrollZoomInstalled = true
+
+        var accumulated: CGFloat = 0
+        // A trackpad reports many small deltas per gesture and a mouse wheel one
+        // big one per notch; accumulating to a threshold makes both feel like
+        // discrete steps instead of a slider.
+        let threshold: CGFloat = 6
+
+        NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            guard event.modifierFlags.contains(.command) else { return event }
+            accumulated += event.scrollingDeltaY
+            while abs(accumulated) >= threshold {
+                let direction = accumulated > 0 ? 1 : -1
+                MainActor.assumeIsolated { WallColumns.shared.zoom(direction) }
+                accumulated -= CGFloat(direction) * threshold
+            }
+            // Swallowed: letting it through would scroll the wall at the same
+            // time as resizing it.
+            return nil
+        }
+    }
+    #endif
 }

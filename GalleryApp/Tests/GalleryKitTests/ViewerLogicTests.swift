@@ -401,6 +401,41 @@ final class ViewerPresenterTests: XCTestCase {
         XCTAssertEqual(presenter.context?.items.count, 5)
     }
 
+    /// A batch can land after the user has already swiped the player away.
+    /// Writing the grown sequence unconditionally there does not merely leak —
+    /// it puts the player back on screen.
+    func testABatchLandingAfterDismissDoesNotReopenThePlayer() async {
+        let presenter = ViewerPresenter()
+        let pool = media(40)
+        presenter.present(items: media(5), startIndex: 0, unbounded: true, extend: { pool })
+
+        // Dismiss while the batch is "in flight", then let it land.
+        presenter.dismiss()
+        await presenter.requestMore()
+
+        XCTAssertNil(presenter.context, "the player came back from the dead")
+    }
+
+    /// And a batch belonging to a sequence the user has since navigated away
+    /// from must not overwrite the one now on screen.
+    func testAStaleBatchDoesNotOverwriteADifferentSequence() async {
+        let presenter = ViewerPresenter()
+        let firstPool = media(40)
+        presenter.present(items: media(5), startIndex: 0, extend: { firstPool })
+
+        let second = [
+            MediaItem(
+                raw: .init(name: "x", path: "other/x", width: 1, height: 1, durationSec: nil),
+                type: .image
+            )
+        ]
+        presenter.present(items: second, startIndex: 0)
+        await presenter.requestMore()
+
+        XCTAssertEqual(presenter.context?.items.count, 1)
+        XCTAssertEqual(presenter.context?.items.first?.path, "other/x")
+    }
+
     func testPresentingNothingDoesNotOpenThePlayer() {
         let presenter = ViewerPresenter()
         presenter.present(items: [], startIndex: 0)
