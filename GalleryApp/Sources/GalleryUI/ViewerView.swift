@@ -88,6 +88,10 @@ struct ViewerView: View {
         .scrollPosition(id: $currentPosition)
         .scrollIndicators(.hidden)
         .ignoresSafeArea()
+        // On the ScrollView itself, which is a real accessibility element — the
+        // same shape as the wall's `masonry-wall`, and unlike a bare container
+        // it does not overwrite the identifiers of the pages inside it.
+        .accessibilityIdentifier("viewer-pager")
     }
 
     @ViewBuilder
@@ -192,6 +196,7 @@ struct ViewerView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background(.black.opacity(0.4), in: Capsule())
+                    .accessibilityIdentifier("viewer-counter")
             }
             .padding()
 

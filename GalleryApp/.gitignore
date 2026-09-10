@@ -4,6 +4,7 @@ GalleryApp.xcodeproj/
 Info.plist
 
 .build/
+.build-release/
 *.log
 *.xcresult
 DerivedData/
