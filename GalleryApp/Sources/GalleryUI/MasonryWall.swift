@@ -94,6 +94,11 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
     let spacing: CGFloat
     let aspectRatio: (Item) -> Double
     let onNearEnd: () -> Void
+    /// Fed the scroll offset so the chrome can get out of the way. A
+    /// `@MainActor` class rather than a closure on purpose: it is Sendable, so
+    /// it can be read from the preference callback without a concurrency
+    /// escape hatch.
+    let scroll: ScrollIntent
     @ViewBuilder let cell: (Item, CGSize) -> Cell
 
     /// How many items from the end count as "near the end". One screenful is
@@ -160,9 +165,13 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
                                     .id(item.id)
                                     .onAppear {
                                         visibleIDs.insert(item.id)
+                                        reportScroll()
                                         if trailingIDs.contains(item.id) { onNearEnd() }
                                     }
-                                    .onDisappear { visibleIDs.remove(item.id) }
+                                    .onDisappear {
+                                        visibleIDs.remove(item.id)
+                                        reportScroll()
+                                    }
                             }
                         }
                         .frame(width: columnWidth)
@@ -175,9 +184,23 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
             // the scroll for the duration stops the two from fighting.
             .simultaneousGesture(pinch(scrollProxy: scrollProxy))
             .scrollDisabled(pinchBaseColumns != nil)
-            .onDisappear { endPinch() }
+            .onDisappear {
+                endPinch()
+                scroll.reset()
+            }
             }
         }
+    }
+
+    /// Tells the chrome which way the wall is moving.
+    ///
+    /// The earliest on-screen item in the *original* order, not in column order:
+    /// with N independently lazy columns there is no single scroll position, but
+    /// the earliest visible item advances monotonically as the wall moves, which
+    /// is all a direction needs.
+    private func reportScroll() {
+        guard let index = items.firstIndex(where: { visibleIDs.contains($0.id) }) else { return }
+        scroll.report(firstVisibleIndex: index)
     }
 
     /// Pinch to change the column count, keeping the same content under the eye.

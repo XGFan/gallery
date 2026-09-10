@@ -3,11 +3,13 @@ import Observation
 
 /// Drives one folder screen.
 ///
-/// A folder has exactly two ways of being looked at (see CONTEXT.md): the
-/// **shallow view** (this level's children, folders included) and the
-/// **recursive view** (every descendant medium, flattened). They are one toggle,
-/// not two modes — but they come from different endpoints, and only the
-/// recursive one is paged, because only it can run to six figures.
+/// A folder has three ways of being looked at (see CONTEXT.md and
+/// docs/adr/0007): `explore`, `album`, `image`. They come from three different
+/// endpoints, and only `image` is paged, because only it can run to six figures.
+///
+/// The view is handed in by the route, not read from a global preference. A
+/// global one meant flipping it in one folder silently changed every other
+/// folder in the app.
 @Observable
 @MainActor
 final class FolderStore {
@@ -16,10 +18,9 @@ final class FolderStore {
     let path: String
     private let client: GalleryClient
 
-    var recursive: Bool {
+    var view: FolderViewKind {
         didSet {
-            guard recursive != oldValue else { return }
-            RecursivePreference.store(recursive)
+            guard view != oldValue else { return }
             Task { await reload() }
         }
     }
@@ -33,29 +34,48 @@ final class FolderStore {
     /// every item twice.
     private var loadingToken: Int?
     var isLoading: Bool { loadingToken != nil }
-    /// Total in the recursive view; nil in the shallow view, which is never paged.
+    /// Total in the `image` view; nil in the other two, which arrive whole.
     private(set) var total: Int?
 
     private var reachedEnd = false
     private var loadToken = 0
 
-    init(path: String, client: GalleryClient, recursive: Bool = RecursivePreference.load()) {
+    init(path: String, view: FolderViewKind, client: GalleryClient) {
         self.path = path
+        self.view = view
         self.client = client
-        self.recursive = recursive
     }
 
     var displayName: String {
         path.isEmpty ? "图库" : String(path.split(separator: "/").last ?? "")
     }
 
-    /// True once every page has been fetched (or in the shallow view, which
-    /// arrives whole).
+    /// True once every page has been fetched (or in the unpaged views, which
+    /// arrive whole).
     var isComplete: Bool { reachedEnd }
 
+    /// The media on the wall, in wall order. `album` yields none — it lists
+    /// folders only.
+    var mediaEntries: [MediaItem] {
+        entries.compactMap { entry in
+            if case .media(let m) = entry { return m }
+            return nil
+        }
+    }
+
+    /// The first page.
+    ///
+    /// The fetch runs in a Task the store owns rather than as a child of the
+    /// caller's. `.task` is cancelled whenever SwiftUI tears the view's task
+    /// down — which on macOS happens during `NavigationSplitView`'s startup
+    /// churn, before the request finishes — and a cancelled URLSession task
+    /// surfaced as `NSURLErrorCancelled`, which the wall then showed as a dead
+    /// error screen it never retried from. An unstructured Task does not
+    /// inherit cancellation, so the load survives the view's churn; awaiting it
+    /// keeps the caller's semantics unchanged.
     func loadInitial() async {
         guard entries.isEmpty, !isLoading else { return }
-        await reload()
+        await Task { await self.reload() }.value
     }
 
     func reload() async {
@@ -68,10 +88,10 @@ final class FolderStore {
         await loadNextPage(token: token)
     }
 
-    /// Called as the wall approaches its end. No-ops in the shallow view and
+    /// Called as the wall approaches its end. No-ops in the unpaged views and
     /// once every page has landed.
     func loadMoreIfNeeded() async {
-        guard recursive, !reachedEnd, !isLoading, error == nil else { return }
+        guard view.isPaged, !reachedEnd, !isLoading, error == nil else { return }
         await loadNextPage(token: loadToken)
     }
 
@@ -80,7 +100,8 @@ final class FolderStore {
         defer { if loadingToken == token { loadingToken = nil } }
 
         do {
-            if recursive {
+            switch view {
+            case .image:
                 let page = try await client.mediaPage(
                     path: path, offset: entries.count, limit: Self.pageSize
                 )
@@ -90,15 +111,27 @@ final class FolderStore {
                 // Trust the item count, not the total: a rescan between pages
                 // could shift the total, and an empty page is the honest signal.
                 reachedEnd = page.items.isEmpty || entries.count >= page.total
-            } else {
+            case .explore:
                 let shallow = try await client.explore(path: path)
                 guard token == loadToken else { return }
                 entries = shallow
+                reachedEnd = true
+            case .album:
+                let albums = try await client.album(path: path)
+                guard token == loadToken else { return }
+                entries = albums
                 reachedEnd = true
             }
         } catch let galleryError as GalleryError {
             guard token == loadToken else { return }
             error = galleryError
+        } catch is CancellationError {
+            // Nobody is waiting for this answer any more. Reporting it would
+            // put an error screen in front of the user for something they never
+            // did, and the wall would sit there refusing to fetch again.
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            // The same thing, reported by URLSession instead of by Swift
+            // concurrency.
         } catch {
             guard token == loadToken else { return }
             self.error = .badResponse
@@ -118,18 +151,5 @@ final class FolderStore {
         } else {
             await loadNextPage(token: loadToken)
         }
-    }
-}
-
-/// The recursive toggle is a viewing habit, so it persists across launches.
-enum RecursivePreference {
-    private static let key = "folder.recursive"
-
-    static func load() -> Bool {
-        UserDefaults.standard.bool(forKey: key)
-    }
-
-    static func store(_ value: Bool) {
-        UserDefaults.standard.set(value, forKey: key)
     }
 }

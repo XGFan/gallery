@@ -81,17 +81,10 @@ enum ViewerGesture {
     }
 }
 
-/// The two orthogonal dimensions of how a sequence is consumed (CONTEXT.md).
-/// The swipe axis is deliberately *not* here — it is a fixed convention, not an
-/// option. See docs/adr/0006.
-struct ViewerOptions: Equatable, Sendable {
-    var shuffled: Bool = false
-    var autoAdvance: Bool = false
-    var interval: TimeInterval = AutoAdvance.defaultInterval
-
-    static let `default` = ViewerOptions()
-}
-
+/// The player's one adjustable dimension (CONTEXT.md). The swipe axis is
+/// deliberately not an option — it is a fixed convention, see docs/adr/0006 —
+/// and neither is the order: since docs/adr/0008 the player simply plays the
+/// sequence it is handed and does not know or care where it came from.
 enum AutoAdvance {
     static let defaultInterval: TimeInterval = 3
     static let intervalChoices: [TimeInterval] = [2, 3, 5, 8, 15]

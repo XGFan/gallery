@@ -10,13 +10,15 @@ struct ViewerView: View {
     let items: [MediaItem]
     let startIndex: Int
     let client: GalleryClient
-    var options: ViewerOptions = .default
     let onClose: () -> Void
     /// Called as the viewer approaches the end of the loaded sequence, so the
     /// folder can page in more rather than dead-ending mid-swipe.
     var onNearEnd: (() -> Void)?
     /// The folder's real total, when it exceeds what has been loaded so far.
     var totalCount: Int?
+    /// A `random` stream has no end and no total: the counter drops its
+    /// denominator rather than inventing one. See docs/adr/0008.
+    var unbounded: Bool = false
 
     @State private var currentID: String?
     @State private var showsChrome = true
@@ -50,7 +52,7 @@ struct ViewerView: View {
         .onAppear {
             guard items.indices.contains(startIndex) else { return }
             currentID = items[startIndex].id
-            autoAdvance = options.autoAdvance || AutoAdvance.loadEnabled()
+            autoAdvance = AutoAdvance.loadEnabled()
         }
         .onChange(of: currentID) { _, _ in
             currentScale = 1
@@ -84,6 +86,9 @@ struct ViewerView: View {
         if item.isVideo {
             VideoPage(url: client.videoURL(item.path), isActive: currentID == item.id)
                 .onTapGesture { showsChrome.toggle() }
+                // Lets the E2E tell a video page from an image page without
+                // knowing anything about the library's contents.
+                .accessibilityIdentifier("viewer-video")
         } else {
             ZoomableImage(
                 displayURL: client.thumbnailURL(item.path),
@@ -188,6 +193,9 @@ struct ViewerView: View {
 
     private var counterText: String {
         let position = (currentIndex ?? 0) + 1
+        // An unbounded stream has no denominator to show. Printing the loaded
+        // count there would be a lie that shrinks every time a batch lands.
+        guard !unbounded else { return "\(position)" }
         // The folder's real total, not just what happens to be loaded.
         let total = max(totalCount ?? items.count, items.count)
         return "\(position) / \(total)"

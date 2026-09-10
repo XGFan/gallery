@@ -1,47 +1,51 @@
 import SwiftUI
 
-/// A folder screen.
+/// One folder screen.
 ///
-/// There is exactly one folder screen and one toggle on it — recursive on/off —
-/// which together cover what the web frontend spread across three URL "modes".
-/// See CONTEXT.md and the deprecated-terms table there.
+/// It shows one of the three views (`explore` / `album` / `image`) and carries
+/// the switcher that moves between them, plus `random` — which is an action, not
+/// a fourth view. See CONTEXT.md and docs/adr/0007.
+///
+/// All of its chrome is self-drawn and floats over the wall: there is no toolbar
+/// and no navigation bar. The wall is the product; the chrome gets out of its
+/// way while scrolling down and comes back at rest.
 struct FolderView: View {
     let client: GalleryClient
-    @State private var store: FolderStore
-    @State private var columnCount: Int
-    @State private var viewer: ViewerContext?
+    @Binding var drawerOpen: Bool
 
-    init(path: String, client: GalleryClient) {
+    @State private var store: FolderStore
+    @State private var scroll = ScrollIntent()
+    /// Held for as long as the random viewer is open — it is the sequence.
+    @State private var randomStream: RandomStream?
+
+    @Environment(Navigator.self) private var navigator
+    @Environment(TreeStore.self) private var treeStore
+    @Environment(ViewerPresenter.self) private var presenter
+    @Environment(\.dismiss) private var dismiss
+
+    private let columns = WallColumns.shared
+
+    init(path: String, view: FolderViewKind, client: GalleryClient, drawerOpen: Binding<Bool>) {
         self.client = client
-        _store = State(initialValue: FolderStore(path: path, client: client))
-        _columnCount = State(initialValue: ColumnPreference.load())
+        _drawerOpen = drawerOpen
+        _store = State(initialValue: FolderStore(path: path, view: view, client: client))
     }
 
     var body: some View {
         content
-            .navigationTitle(store.displayName)
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar { toolbarItems }
+            .overlay(alignment: .top) { topChrome }
+            .overlay(alignment: .bottom) { bottomChrome }
             .task { await store.loadInitial() }
-            .onChange(of: columnCount) { _, new in ColumnPreference.store(new) }
-            .fullScreenCoverCompat(item: $viewer) { context in
-                ViewerView(
-                    items: context.items,
-                    startIndex: context.startIndex,
-                    client: client,
-                    options: context.options,
-                    onClose: { viewer = nil },
-                    // Without this the sequence dead-ends at whatever page
-                    // happened to be loaded when the viewer opened.
-                    onNearEnd: context.livePaging
-                        ? { Task { await extendViewerSequence() } }
-                        : nil,
-                    totalCount: context.livePaging ? store.total : nil
-                )
-            }
+            #if os(iOS)
+            // The self-drawn top bar replaces it. Left-edge swipe still pops —
+            // that gesture stays with the system, which is why the drawer opens
+            // from a button instead of from the edge.
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
+            .navigationTitle(store.displayName)
     }
+
+    // MARK: - Wall
 
     @ViewBuilder
     private var content: some View {
@@ -52,258 +56,193 @@ struct FolderView: View {
         } else if store.entries.isEmpty, store.isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if store.entries.isEmpty {
-            ContentUnavailableView("这个文件夹是空的", systemImage: "photo.on.rectangle")
+            ContentUnavailableView(emptyTitle, systemImage: "photo.on.rectangle")
         } else {
             wall
+        }
+    }
+
+    /// An empty `album` means something specific — there is nothing deeper —
+    /// and saying "这个文件夹是空的" there would be a lie about a folder that is
+    /// full of pictures.
+    private var emptyTitle: String {
+        switch store.view {
+        case .album: "这底下没有更深的相册"
+        case .explore, .image: "这个文件夹是空的"
         }
     }
 
     private var wall: some View {
         MasonryWall(
             items: store.entries,
-            columnCount: $columnCount,
-            columnRange: ColumnPreference.minColumns...ColumnPreference.maxColumns,
+            columnCount: columnBinding,
+            columnRange: WallColumns.range,
             spacing: 4,
             aspectRatio: { $0.aspectRatio },
-            onNearEnd: { Task { await store.loadMoreIfNeeded() } }
+            onNearEnd: { Task { await store.loadMoreIfNeeded() } },
+            scroll: scroll
         ) { entry, size in
-            NavigationLinkOrButton(entry: entry) {
+            Button {
                 open(entry)
             } label: {
                 WallCell(entry: entry, size: size, imageURL: client.wallImageURL(for: entry))
             }
+            .buttonStyle(.plain)
             // On the button itself, not inside its label — a Button absorbs the
             // accessibility of its content, which would hide the identifier.
             .accessibilityIdentifier(WallCell.identifier(for: entry))
         }
-        .overlay(alignment: .bottom) { loadingFooter }
         .accessibilityIdentifier("masonry-wall")
     }
 
+    private var columnBinding: Binding<Int> {
+        Binding(get: { columns.count }, set: { columns.count = $0 })
+    }
+
+    // MARK: - Chrome
+
+    private var topChrome: some View {
+        TopChrome(
+            title: store.displayName,
+            crumbs: crumbs,
+            isVisible: scroll.chromeVisible,
+            showsBack: !store.path.isEmpty,
+            onDrawer: { drawerOpen.toggle() },
+            onBack: { dismiss() },
+            onJump: { path in
+                navigator.goToAncestor(path: path, hasChildren: treeStore.hasChildren(path))
+            }
+        )
+    }
+
+    /// The bottom edge has three tenants that must not stack up. The switcher
+    /// and the paging counter are mutually exclusive by construction (one shows
+    /// at rest and on the way up, the other only while scrolling down). The
+    /// retry bar is the exception: a page failure has to stay visible and
+    /// reachable, or the wall just silently stops growing and that is
+    /// indistinguishable from having reached the end.
     @ViewBuilder
-    private var loadingFooter: some View {
-        // A page failure must stay visible and recoverable. Without this the
-        // wall just stops growing: no spinner, no message, and scrolling does
-        // nothing — indistinguishable from having reached the end.
-        if let error = store.error, !store.entries.isEmpty {
-            Button {
-                Task { await store.retry() }
-            } label: {
-                Label(error.localizedDescription, systemImage: "arrow.clockwise")
-                    .font(.caption)
-                    .lineLimit(2)
+    private var bottomChrome: some View {
+        VStack(spacing: 8) {
+            if let error = store.error, !store.entries.isEmpty {
+                retryBar(error)
+            } else if store.isLoading, !store.entries.isEmpty {
+                ProgressView()
+                    .padding(8)
+                    .background(.regularMaterial, in: Capsule())
+            } else if scroll.counterVisible, let total = store.total, store.view.isPaged {
+                Text("\(store.entries.count) / \(total)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(.regularMaterial, in: Capsule())
+                    .transition(.opacity)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.regularMaterial, in: Capsule())
-            .padding(.bottom, 12)
-            .padding(.horizontal, 16)
-        } else if store.isLoading, !store.entries.isEmpty {
-            ProgressView()
-                .padding(8)
-                .background(.regularMaterial, in: Capsule())
-                .padding(.bottom, 12)
-        } else if let total = store.total, store.recursive {
-            Text("\(store.entries.count) / \(total)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(.regularMaterial, in: Capsule())
-                .padding(.bottom, 12)
+
+            ViewSwitcher(
+                views: availableViews,
+                current: store.view,
+                isVisible: scroll.chromeVisible,
+                onSelect: { store.view = $0 },
+                onRandom: startRandom
+            )
         }
+        // No bottom padding here: the switcher carries its own, and doubling it
+        // pushes the capsule visibly off the edge it is supposed to hug.
+        .animation(.easeOut(duration: 0.25), value: scroll.counterVisible)
     }
 
-    @ToolbarContentBuilder
-    private var toolbarItems: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                setColumns(columnCount + 1)
-            } label: {
-                Image(systemName: "minus.magnifyingglass")
-            }
-            .disabled(columnCount >= ColumnPreference.maxColumns)
-
-            Button {
-                setColumns(columnCount - 1)
-            } label: {
-                Image(systemName: "plus.magnifyingglass")
-            }
-            .disabled(columnCount <= ColumnPreference.minColumns)
-
-            Button(action: startShuffle) {
-                Image(systemName: "shuffle")
-            }
-            .disabled(shuffleSequence.isEmpty)
-            .accessibilityIdentifier("shuffle-button")
-
-            Toggle(isOn: $store.recursive) {
-                Label("递归", systemImage: store.recursive ? "square.stack.3d.down.right.fill" : "square.stack.3d.down.right")
-            }
-            .toggleStyle(.button)
-            .accessibilityIdentifier("recursive-toggle")
+    private func retryBar(_ error: GalleryError) -> some View {
+        Button {
+            Task { await store.retry() }
+        } label: {
+            Label(error.localizedDescription, systemImage: "arrow.clockwise")
+                .font(.caption)
+                .lineLimit(2)
         }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: Capsule())
+        .padding(.horizontal, 16)
     }
 
-    private func setColumns(_ value: Int) {
-        let clamped = min(max(value, ColumnPreference.minColumns), ColumnPreference.maxColumns)
-        columnCount = clamped
-        ColumnPreference.store(clamped)
+    /// `album` and `explore` say nothing in a leaf folder — `album` comes back
+    /// empty and `explore` shows exactly what `image` shows — so they are hidden
+    /// there, as on the web.
+    ///
+    /// The test is exact and costs no request: the tree is already in memory and
+    /// only contains directories whose subtree holds media, so "no children in
+    /// the tree" *is* "album would be empty". See docs/adr/0007.
+    private var availableViews: [FolderViewKind] {
+        FolderViewKind.available(hasSubfolders: treeStore.hasChildren(store.path))
     }
 
-    /// The media on the wall, in wall order.
-    private var mediaEntries: [MediaItem] {
-        store.entries.compactMap { entry in
-            if case .media(let m) = entry { return m }
-            return nil
+    /// Root → … → here. Built from the path rather than from the navigation
+    /// stack, because after a jump the stack holds one deep entry whose
+    /// ancestors were never visited — and those ancestors are exactly what the
+    /// user wants to reach.
+    private var crumbs: [PathCrumb] {
+        var result = [PathCrumb(name: "图库", path: "")]
+        var prefix = ""
+        for segment in store.path.split(separator: "/") {
+            prefix = prefix.isEmpty ? String(segment) : prefix + "/" + segment
+            result.append(PathCrumb(name: String(segment), path: prefix))
         }
+        return result
     }
 
-    /// What a shuffle would actually play. Isolated mode drops videos, so an
-    /// all-video folder yields nothing — the button must look disabled rather
-    /// than silently doing nothing when pressed.
-    private var shuffleSequence: [MediaItem] {
-        MediaOrder.sequence(
-            from: mediaEntries, entry: nil, mixed: MixedModePreference.load()
-        ).items
-    }
-
-    /// Shuffle is an action, not a view: it opens the same left/right viewer
-    /// with the sequence rearranged. See docs/adr/0006.
-    private func startShuffle() {
-        let media = mediaEntries
-        guard !media.isEmpty else { return }
-        let (sequence, start) = MediaOrder.sequence(
-            from: media,
-            entry: nil,
-            mixed: MixedModePreference.load(),
-            seed: UInt64.random(in: 1...UInt64.max)
-        )
-        guard !sequence.isEmpty else { return }
-        viewer = ViewerContext(
-            items: sequence,
-            startIndex: start,
-            options: ViewerOptions(shuffled: true),
-            // A shuffled order is a snapshot: appending later pages to it would
-            // interleave un-shuffled items into a shuffled sequence.
-            livePaging: false
-        )
-    }
-
-    /// Pages in more and hands the grown sequence to the open viewer, so a swipe
-    /// can continue past the pages that happened to be loaded when it opened.
-    private func extendViewerSequence() async {
-        await store.loadMoreIfNeeded()
-        guard let current = viewer, current.livePaging else { return }
-        let media = mediaEntries
-        guard media.count > current.items.count else { return }
-        viewer = ViewerContext(
-            items: media,
-            startIndex: current.startIndex,
-            options: current.options,
-            livePaging: true
-        )
-    }
+    // MARK: - Opening things
 
     private func open(_ entry: WallEntry) {
-        guard case .media = entry else { return }
-        // The viewer's sequence is the wall's own order, which is what makes a
-        // single horizontal-swipe player enough for both images and videos.
-        // See docs/adr/0001.
-        let media = mediaEntries
-        guard case .media(let tapped) = entry,
-              let index = media.firstIndex(of: tapped)
-        else { return }
-        viewer = ViewerContext(items: media, startIndex: index)
-    }
-}
-
-/// Identifiable only — hashing a value carrying the whole media array is a
-/// footgun, and `fullScreenCover(item:)` never needs it.
-struct ViewerContext: Identifiable {
-    let items: [MediaItem]
-    let startIndex: Int
-    var options: ViewerOptions = .default
-    /// A shuffled sequence is a fixed snapshot; only the in-order sequence keeps
-    /// growing as the folder pages in.
-    var livePaging: Bool = true
-
-    var id: String { (items.indices.contains(startIndex) ? items[startIndex].path : "") + "@\(startIndex)" }
-}
-
-/// Folders push onto the navigation stack; media opens the viewer in place.
-private struct NavigationLinkOrButton<Label: View>: View {
-    let entry: WallEntry
-    let action: () -> Void
-    @ViewBuilder let label: Label
-
-    var body: some View {
         switch entry {
         case .folder(let folder):
-            NavigationLink(value: Route.folder(folder.path)) { label }
-                .buttonStyle(.plain)
-        case .media:
-            Button(action: action) { label }
-                .buttonStyle(.plain)
+            navigator.open(folder: folder.path, from: store.view)
+        case .media(let media):
+            openViewer(at: media)
         }
     }
-}
 
-enum Route: Hashable {
-    case folder(String)
-}
-
-enum ColumnPreference {
-    static let minColumns = 1
-    #if os(macOS)
-    static let maxColumns = 8
-    static let defaultColumns = 5
-    #else
-    static let maxColumns = 5
-    static let defaultColumns = 2
-    #endif
-
-    private static let key = "wall.columns"
-
-    static func load() -> Int {
-        let stored = UserDefaults.standard.integer(forKey: key)
-        guard stored >= minColumns, stored <= maxColumns else { return defaultColumns }
-        return stored
+    /// The player's sequence is the wall's own order, which is what makes a
+    /// single horizontal-swipe player enough for both images and videos.
+    /// See docs/adr/0001.
+    private func openViewer(at media: MediaItem) {
+        let all = store.mediaEntries
+        guard let index = all.firstIndex(of: media) else { return }
+        let paged = store.view.isPaged
+        presenter.present(
+            items: all,
+            startIndex: index,
+            totalCount: paged ? store.total : nil,
+            extend: paged
+                ? { [store] in
+                    await store.loadMoreIfNeeded()
+                    return store.mediaEntries
+                }
+                : nil
+        )
     }
 
-    static func store(_ value: Int) {
-        UserDefaults.standard.set(value, forKey: key)
-    }
-}
-
-struct ErrorStateView: View {
-    let error: GalleryError
-    let retry: () -> Void
-
-    var body: some View {
-        ContentUnavailableView {
-            Label("打不开图库", systemImage: "wifi.exclamationmark")
-        } description: {
-            Text(error.localizedDescription)
-        } actions: {
-            Button("重试", action: retry)
+    /// `random` is an action, not a view: the switcher does not stay on it, and
+    /// closing the player puts the user back exactly where they were.
+    ///
+    /// The sequence is an unbounded sample stream from the backend, not a
+    /// shuffle of what happens to be loaded — see docs/adr/0008.
+    private func startRandom() {
+        let stream = RandomStream(path: store.path, client: client)
+        randomStream = stream
+        Task {
+            guard await stream.start() else { return }
+            presenter.present(
+                items: stream.items,
+                startIndex: 0,
+                unbounded: true,
+                extend: {
+                    await stream.extendIfNeeded()
+                    return stream.items
+                }
+            )
         }
-    }
-}
-
-extension View {
-    /// `fullScreenCover` is iOS-only; macOS gets a sheet, which is the closest
-    /// native equivalent for a modal viewer.
-    @ViewBuilder
-    func fullScreenCoverCompat<Item: Identifiable, Content: View>(
-        item: Binding<Item?>,
-        @ViewBuilder content: @escaping (Item) -> Content
-    ) -> some View {
-        #if os(iOS)
-        fullScreenCover(item: item, content: content)
-        #else
-        sheet(item: item, content: content)
-        #endif
     }
 }

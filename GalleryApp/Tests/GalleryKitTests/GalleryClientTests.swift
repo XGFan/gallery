@@ -187,11 +187,11 @@ final class FolderStorePagingTests: XCTestCase {
             return .init(body: mediaPageJSON(offset: offset, limit: 150, total: 400), delay: 1.2)
         }
 
-        let store = FolderStore(path: "p", client: stubbedClient(), recursive: false)
+        let store = FolderStore(path: "p", view: .explore, client: stubbedClient())
         let load = Task { await store.loadInitial() }
         try? await Task.sleep(nanoseconds: 50_000_000)
 
-        store.recursive = true   // supersedes the shallow load already in flight
+        store.view = .image      // supersedes the shallow load already in flight
 
         // By now the shallow load has returned (0.25s) and been discarded, while
         // the recursive one (1.2s) is still running.
@@ -218,7 +218,7 @@ final class FolderStorePagingTests: XCTestCase {
             return .init(body: mediaPageJSON(offset: offset, limit: 150, total: 400))
         }
 
-        let store = FolderStore(path: "p", client: stubbedClient(), recursive: true)
+        let store = FolderStore(path: "p", view: .image, client: stubbedClient())
         await store.loadInitial()
         XCTAssertEqual(store.entries.count, 150)
 
@@ -231,6 +231,121 @@ final class FolderStorePagingTests: XCTestCase {
         XCTAssertEqual(store.entries.count, 300, "retry should actually fetch the page")
     }
 
+}
+
+/// The two endpoints the client gained in docs/adr/0007 and 0008. Both are new
+/// wire formats, and a wire format that decodes wrong fails at the top level —
+/// one bad field blanks the whole screen.
+@MainActor
+final class AlbumAndRandomTests: XCTestCase {
+    override func tearDown() {
+        StubURLProtocol.handler = nil
+        super.tearDown()
+    }
+
+    /// `album` is a flat list of folders, and it is the root's landing view — so
+    /// a decode failure here is a blank first screen.
+    func testAlbumDecodesToFolderEntries() async throws {
+        StubURLProtocol.handler = { _ in
+            .init(body: Data("""
+            [{"name":"SIREN","path":"Weibo/SIREN","cover":{"name":"c.jpg","path":"Weibo/SIREN/c.jpg","width":800,"height":1200}},
+             {"name":"empty","path":"Weibo/empty","cover":{}}]
+            """.utf8))
+        }
+
+        let entries = try await stubbedClient().album(path: "Weibo")
+        XCTAssertEqual(entries.count, 2)
+        guard case .folder(let first) = entries[0] else {
+            return XCTFail("album must yield folders, not media")
+        }
+        XCTAssertEqual(first.path, "Weibo/SIREN")
+        XCTAssertEqual(first.cover?.path, "Weibo/SIREN/c.jpg")
+
+        // A media-less subtree serialises its cover as `{}`; a required field
+        // there would take the whole listing down with it.
+        guard case .folder(let second) = entries[1] else {
+            return XCTFail("expected a folder")
+        }
+        XCTAssertNil(second.cover?.path)
+    }
+
+    /// `random` returns videos too now, and the client must not lose the type or
+    /// the duration.
+    func testRandomDecodesBothKinds() async throws {
+        StubURLProtocol.handler = { _ in
+            .init(body: Data("""
+            [{"type":"image","name":"a.jpg","path":"p/a.jpg","width":100,"height":200,"parent":"p"},
+             {"type":"video","name":"b.mp4","path":"p/b.mp4","width":1920,"height":1080,"duration_sec":12.5,"parent":"p"}]
+            """.utf8))
+        }
+
+        let items = try await stubbedClient().random(path: "p", includeVideo: true, count: 30)
+        XCTAssertEqual(items.count, 2)
+        XCTAssertFalse(items[0].isVideo)
+        XCTAssertTrue(items[1].isVideo)
+        XCTAssertEqual(items[1].durationSec, 12.5)
+    }
+
+    func testRandomAsksForTheRightTypeAndCount() async throws {
+        let seen = QueryRecorder()
+        StubURLProtocol.handler = { request in
+            seen.record(request.url?.query ?? "")
+            return .init(body: Data("[]".utf8))
+        }
+
+        _ = try await stubbedClient().random(path: "p", includeVideo: false, count: 30)
+        XCTAssertTrue(seen.last.contains("type=image"), "isolated mode must exclude videos: \(seen.last)")
+        XCTAssertTrue(seen.last.contains("count=30"))
+        XCTAssertTrue(seen.last.contains("flat=true"))
+    }
+
+    /// The stream is unbounded: each batch is appended, never replaced.
+    func testStreamAppendsEachBatch() async {
+        StubURLProtocol.handler = { _ in
+            .init(body: Data("""
+            [{"type":"image","name":"a","path":"p/a","width":1,"height":1},
+             {"type":"image","name":"b","path":"p/b","width":1,"height":1}]
+            """.utf8))
+        }
+
+        let stream = RandomStream(path: "p", client: stubbedClient(), includeVideo: true)
+        let started = await stream.start()
+        XCTAssertTrue(started)
+        XCTAssertEqual(stream.items.count, 2)
+
+        await stream.extendIfNeeded()
+        XCTAssertEqual(stream.items.count, 4, "batches accumulate — the sequence grows as you swipe")
+    }
+
+    /// An empty batch is the backend saying there is nothing here. Without this
+    /// the player would keep asking forever as the user swiped.
+    func testEmptyBatchStopsTheStream() async {
+        StubURLProtocol.handler = { _ in .init(body: Data("[]".utf8)) }
+
+        let stream = RandomStream(path: "p", client: stubbedClient(), includeVideo: true)
+        let started = await stream.start()
+        XCTAssertFalse(started, "an empty folder must not open an empty player")
+        XCTAssertTrue(stream.isExhausted)
+
+        await stream.extendIfNeeded()
+        XCTAssertTrue(stream.items.isEmpty)
+    }
+}
+
+/// Captures what the `@Sendable` stub handler saw, for asserting on the request.
+final class QueryRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = ""
+
+    func record(_ query: String) {
+        lock.lock(); defer { lock.unlock() }
+        value = query
+    }
+
+    var last: String {
+        lock.lock(); defer { lock.unlock() }
+        return value
+    }
 }
 
 /// Minimal one-shot flag usable from the `@Sendable` stub handler.

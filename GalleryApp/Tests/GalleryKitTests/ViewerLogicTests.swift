@@ -144,72 +144,267 @@ extension AutoAdvanceTests {
     }
 }
 
-final class MediaOrderTests: XCTestCase {
-    private func media(_ n: Int, videosEvery: Int = 0) -> [MediaItem] {
-        (0..<n).map { index in
-            let isVideo = videosEvery > 0 && index % videosEvery == 0
-            return MediaItem(
-                raw: .init(
-                    name: "\(index)", path: "p/\(index)", width: 100, height: 200, durationSec: nil
-                ),
-                type: isVideo ? .video : .image
+/// The navigation mapping from docs/adr/0007 — which view each entry point
+/// lands in. It is a table, it is easy to get subtly wrong, and getting it wrong
+/// is invisible until someone notices they keep landing in the wrong view.
+@MainActor
+final class NavigatorTests: XCTestCase {
+    func testDrillingInFromExploreStaysInExplore() {
+        let nav = Navigator()
+        nav.open(folder: "A", from: .explore)
+        XCTAssertEqual(nav.routes, [Route(path: "A", view: .explore)])
+    }
+
+    /// A cell in the album view *is* an album; the only reason to open one is to
+    /// look at what is inside it.
+    func testDrillingInFromAlbumLandsInImage() {
+        let nav = Navigator()
+        nav.open(folder: "A/B", from: .album)
+        XCTAssertEqual(nav.routes, [Route(path: "A/B", view: .image)])
+    }
+
+    func testJumpingToABranchLandsInAlbumAndResetsTheStack() {
+        let nav = Navigator()
+        nav.open(folder: "A", from: .explore)
+        nav.open(folder: "A/B", from: .explore)
+
+        nav.jump(to: "X/Y", hasChildren: true)
+        XCTAssertEqual(nav.routes, [Route(path: "X/Y", view: .album)],
+                       "a jump resets the stack so Back returns to the root")
+    }
+
+    func testJumpingToALeafLandsInImage() {
+        let nav = Navigator()
+        nav.jump(to: "X/Y", hasChildren: false)
+        XCTAssertEqual(nav.routes, [Route(path: "X/Y", view: .image)])
+    }
+
+    func testJumpingToTheRootEmptiesTheStack() {
+        let nav = Navigator()
+        nav.open(folder: "A", from: .explore)
+        nav.jump(to: "", hasChildren: true)
+
+        XCTAssertTrue(nav.routes.isEmpty, "the root is the stack's root, not an entry in it")
+        XCTAssertEqual(nav.rootView, .album)
+        XCTAssertEqual(nav.currentPath, "")
+    }
+
+    /// An ancestor that is on the stack is popped to, keeping its own view.
+    func testGoingToAnAncestorOnTheStackPops() {
+        let nav = Navigator()
+        nav.open(folder: "A", from: .explore)
+        nav.open(folder: "A/B", from: .explore)
+        nav.open(folder: "A/B/C", from: .explore)
+
+        nav.goToAncestor(path: "A", hasChildren: true)
+        XCTAssertEqual(nav.routes.map(\.path), ["A"])
+        XCTAssertEqual(nav.routes.first?.view, .explore, "popping must not rewrite the view")
+    }
+
+    /// After a jump the stack holds one deep entry whose ancestors were never
+    /// visited — those are exactly the crumbs the user wants, so they jump.
+    func testGoingToAnAncestorNotOnTheStackJumps() {
+        let nav = Navigator()
+        nav.jump(to: "A/B/C", hasChildren: false)
+
+        nav.goToAncestor(path: "A", hasChildren: true)
+        XCTAssertEqual(nav.routes, [Route(path: "A", view: .album)])
+    }
+
+    func testCurrentPathFollowsTheTopOfTheStack() {
+        let nav = Navigator()
+        XCTAssertEqual(nav.currentPath, "")
+        nav.open(folder: "A", from: .explore)
+        XCTAssertEqual(nav.currentPath, "A")
+    }
+}
+
+/// The leaf oracle. "No children in the tree" is what hides `explore` and
+/// `album`, so a wrong answer either shows two dead tabs or hides two live ones.
+final class FolderViewKindTests: XCTestCase {
+    func testEveryViewIsOfferedWhenTheFolderHasSubfolders() {
+        XCTAssertEqual(FolderViewKind.available(hasSubfolders: true), [.explore, .album, .image])
+    }
+
+    /// In a leaf, `album` is empty and `explore` is a duplicate of `image`.
+    func testALeafOnlyOffersImage() {
+        XCTAssertEqual(FolderViewKind.available(hasSubfolders: false), [.image])
+    }
+}
+
+@MainActor
+final class TreeStoreTests: XCTestCase {
+    private func store(_ raw: [String: Any]) -> TreeStore {
+        let tree = FolderTree(root: FolderTree.parse(raw, name: "", path: ""))
+        return TreeStore(client: GalleryClient(baseURL: URL(string: "https://example.invalid")!), tree: tree)
+    }
+
+    func testBranchesAndLeavesAreToldApart() {
+        let s = store(["A": ["B": [String: Any]()], "C": [String: Any]()])
+        XCTAssertTrue(s.hasChildren(""), "the root has children")
+        XCTAssertTrue(s.hasChildren("A"))
+        XCTAssertFalse(s.hasChildren("A/B"), "a leaf has no children")
+        XCTAssertFalse(s.hasChildren("C"))
+    }
+
+    /// Being wrong towards "it has children" shows two tabs that turn out empty;
+    /// being wrong the other way hides views that exist. Default to the former.
+    func testMissingTreeAssumesEverythingIsABranch() {
+        let s = TreeStore(client: GalleryClient(baseURL: URL(string: "https://example.invalid")!))
+        XCTAssertTrue(s.hasChildren("anything"))
+    }
+
+    func testRevealingAncestorsOpensEveryLevelButTheLeafItself() {
+        let s = store([String: Any]())
+        s.revealAncestors(of: "A/B/C")
+
+        XCTAssertTrue(s.isExpanded("A"))
+        XCTAssertTrue(s.isExpanded("A/B"))
+        XCTAssertFalse(s.isExpanded("A/B/C"), "the destination itself need not be open")
+    }
+
+    func testCollapsingANodeCollapsesWhatWasOpenBeneathIt() {
+        let s = store([String: Any]())
+        s.revealAncestors(of: "A/B/C/D")
+        XCTAssertTrue(s.isExpanded("A/B"))
+
+        s.toggleExpansion("A")
+        XCTAssertFalse(s.isExpanded("A"))
+        XCTAssertFalse(s.isExpanded("A/B"), "re-opening A must not explode back to the old shape")
+    }
+}
+
+@MainActor
+final class WallColumnsTests: XCTestCase {
+    func testCountIsClampedToTheRange() {
+        let columns = WallColumns()
+        columns.count = 0
+        XCTAssertEqual(columns.count, WallColumns.minColumns)
+        columns.count = 999
+        XCTAssertEqual(columns.count, WallColumns.maxColumns)
+    }
+
+    /// Positive means "bigger pictures", which is fewer columns — the same
+    /// direction a pinch means it.
+    func testZoomingInReducesTheColumnCount() {
+        let columns = WallColumns()
+        columns.count = 3
+        columns.zoom(1)
+        XCTAssertEqual(columns.count, 2)
+        columns.zoom(-1)
+        XCTAssertEqual(columns.count, 3)
+    }
+
+    func testZoomingPastTheEndsIsANoOpRatherThanAnError() {
+        let columns = WallColumns()
+        columns.count = WallColumns.minColumns
+        columns.zoom(5)
+        XCTAssertEqual(columns.count, WallColumns.minColumns)
+    }
+}
+
+/// What decides whether the chrome is on screen. It is fed by which cells are
+/// visible rather than by a scroll offset — see ScrollIntent for why the offset
+/// version had to go.
+@MainActor
+final class ScrollIntentTests: XCTestCase {
+    func testChromeShowsAtTheTopAndOnTheWayUp() {
+        let scroll = ScrollIntent()
+        XCTAssertTrue(scroll.chromeVisible, "a folder that never scrolls must still show its chrome")
+
+        scroll.report(firstVisibleIndex: 40)
+        XCTAssertFalse(scroll.chromeVisible, "scrolling down gives the wall the screen")
+        XCTAssertTrue(scroll.counterVisible)
+
+        scroll.report(firstVisibleIndex: 30)
+        XCTAssertTrue(scroll.chromeVisible, "scrolling up brings it back")
+        XCTAssertFalse(scroll.counterVisible, "the two share the bottom edge and must not stack")
+    }
+
+    /// The same item reappearing must not read as movement — a lazy container
+    /// fires onAppear/onDisappear in bursts around the render window's edge.
+    func testRepeatingTheSameIndexIsNotMovement() {
+        let scroll = ScrollIntent()
+        scroll.report(firstVisibleIndex: 40)
+        scroll.report(firstVisibleIndex: 30)
+        XCTAssertTrue(scroll.chromeVisible)
+
+        scroll.report(firstVisibleIndex: 30)
+        XCTAssertTrue(scroll.chromeVisible, "a repeat is not a scroll down")
+    }
+
+    func testBackAtTheFirstItemCountsAsAtTop() {
+        let scroll = ScrollIntent()
+        scroll.report(firstVisibleIndex: 40)
+        XCTAssertFalse(scroll.atTop)
+
+        scroll.report(firstVisibleIndex: 0)
+        XCTAssertTrue(scroll.atTop)
+        XCTAssertTrue(scroll.chromeVisible)
+    }
+
+    func testResetBringsTheChromeBack() {
+        let scroll = ScrollIntent()
+        scroll.report(firstVisibleIndex: 40)
+        XCTAssertFalse(scroll.chromeVisible)
+
+        scroll.reset()
+        XCTAssertTrue(scroll.chromeVisible, "the next screen must not inherit a hidden chrome")
+    }
+}
+
+@MainActor
+final class ViewerPresenterTests: XCTestCase {
+    private func media(_ n: Int) -> [MediaItem] {
+        (0..<n).map {
+            MediaItem(
+                raw: .init(name: "\($0)", path: "p/\($0)", width: 100, height: 200, durationSec: nil),
+                type: .image
             )
         }
     }
 
-    /// An unreproducible shuffle is untestable, hence the seed.
-    func testShuffleIsDeterministicForASeed() {
-        let items = media(50)
-        XCTAssertEqual(
-            MediaOrder.shuffled(items, seed: 42).map(\.id),
-            MediaOrder.shuffled(items, seed: 42).map(\.id)
-        )
-        XCTAssertNotEqual(
-            MediaOrder.shuffled(items, seed: 42).map(\.id),
-            MediaOrder.shuffled(items, seed: 43).map(\.id)
-        )
+    /// Growing the sequence must not look like a different presentation, or the
+    /// player is torn down and rebuilt mid-swipe.
+    func testGrowingTheSequenceKeepsTheSameIdentity() async {
+        let presenter = ViewerPresenter()
+        var pool = media(10)
+        presenter.present(items: pool, startIndex: 3, extend: { pool })
+
+        let before = presenter.context?.id
+        pool = media(40)
+        await presenter.requestMore()
+
+        XCTAssertEqual(presenter.context?.items.count, 40)
+        XCTAssertEqual(presenter.context?.id, before)
+        XCTAssertEqual(presenter.context?.startIndex, 3)
     }
 
-    /// The property that actually matters: nothing is lost or duplicated.
-    func testShuffleIsAPermutation() {
-        let items = media(200)
-        let shuffled = MediaOrder.shuffled(items, seed: 7)
+    func testRequestingMoreWithNothingNewLeavesTheContextAlone() async {
+        let presenter = ViewerPresenter()
+        let pool = media(10)
+        presenter.present(items: pool, startIndex: 0, extend: { pool })
 
-        XCTAssertEqual(shuffled.count, items.count)
-        XCTAssertEqual(Set(shuffled.map(\.id)), Set(items.map(\.id)))
-        XCTAssertNotEqual(shuffled.map(\.id), items.map(\.id), "200 items should not shuffle to identity")
+        await presenter.requestMore()
+        XCTAssertEqual(presenter.context?.items.count, 10)
     }
 
-    /// Isolated mode from a photo must never drop the user into a video.
-    func testIsolatedSequenceKeepsEntryKind() {
-        let items = media(30, videosEvery: 3)
-        let photo = items.first { !$0.isVideo }!
+    /// Clearing from the outside — the iOS cover's binding, a swipe-down — must
+    /// not leave the old sequence's grow-closure for the next one to inherit.
+    func testDismissingDropsTheGrowClosure() async {
+        let presenter = ViewerPresenter()
+        presenter.present(items: media(5), startIndex: 0, extend: { self.media(50) })
+        presenter.context = nil
 
-        let (isolated, start) = MediaOrder.sequence(from: items, entry: photo, mixed: false, seed: 1)
-        XCTAssertFalse(isolated.contains { $0.isVideo }, "isolated must not include the other kind")
-        XCTAssertEqual(isolated[start].id, photo.id, "start index must point at the entry item")
-
-        let (mixed, mixedStart) = MediaOrder.sequence(from: items, entry: photo, mixed: true, seed: 1)
-        XCTAssertTrue(mixed.contains { $0.isVideo }, "mixed keeps both kinds")
-        XCTAssertEqual(mixed[mixedStart].id, photo.id)
+        presenter.present(items: media(5), startIndex: 0)
+        await presenter.requestMore()
+        XCTAssertEqual(presenter.context?.items.count, 5)
     }
 
-    /// Shuffling the whole folder has no entry to match, so isolated means
-    /// photos only.
-    func testIsolatedWholeFolderDropsVideos() {
-        let items = media(30, videosEvery: 3)
-        let (isolated, _) = MediaOrder.sequence(from: items, entry: nil, mixed: false, seed: 5)
-        XCTAssertFalse(isolated.isEmpty)
-        XCTAssertFalse(isolated.contains { $0.isVideo })
-
-        let (mixed, _) = MediaOrder.sequence(from: items, entry: nil, mixed: true, seed: 5)
-        XCTAssertEqual(mixed.count, items.count)
-    }
-
-    func testUnseededSequenceKeepsOriginalOrder() {
-        let items = media(10)
-        let (ordered, _) = MediaOrder.sequence(from: items, entry: nil, mixed: true, seed: nil)
-        XCTAssertEqual(ordered.map(\.id), items.map(\.id))
+    func testPresentingNothingDoesNotOpenThePlayer() {
+        let presenter = ViewerPresenter()
+        presenter.present(items: [], startIndex: 0)
+        XCTAssertNil(presenter.context)
     }
 }
 

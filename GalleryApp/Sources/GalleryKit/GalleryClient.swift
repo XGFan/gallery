@@ -112,7 +112,34 @@ struct GalleryClient: Sendable {
         return entries
     }
 
-    /// The whole folder tree, for the navigation sheet / sidebar.
+    /// The album view: every descendant folder that directly holds media,
+    /// flattened. Recursive — this is the view the client used to be missing
+    /// entirely, see docs/adr/0007.
+    ///
+    /// Deliberately not paged. `/api/album/` answers whole, and at the library's
+    /// current size that is 1822 entries. If the library grows an order of
+    /// magnitude this has to come back and page.
+    func album(path: String) async throws -> [WallEntry] {
+        let folders = try await fetch([FolderNode].self, from: urlComponents("/api/album/", path))
+        return folders.map { WallEntry.folder($0) }
+    }
+
+    /// One batch of the random stream.
+    ///
+    /// This is *sampling*, not a permutation: batches can repeat items, there is
+    /// no total, and it never ends. See docs/adr/0008 — that is the deal that
+    /// buys instant start and folder-size-independent memory.
+    func random(path: String, includeVideo: Bool, count: Int) async throws -> [MediaItem] {
+        var components = urlComponents("/api/random/", path)
+        components.queryItems = [
+            .init(name: "flat", value: "true"),
+            .init(name: "type", value: includeVideo ? "all" : "image"),
+            .init(name: "count", value: String(count)),
+        ]
+        return try await fetch([MediaItem].self, from: components)
+    }
+
+    /// The whole folder tree, for the navigation drawer / sidebar.
     func tree() async throws -> FolderTree {
         let (data, response) = try await session.data(from: build("/api/tree", ""))
         try validate(response, data: data)

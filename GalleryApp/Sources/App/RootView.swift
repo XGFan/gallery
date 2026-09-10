@@ -1,115 +1,244 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 struct RootView: View {
-    private let client = GalleryClient(baseURL: AppConfig.baseURL)
+    private let client: GalleryClient
 
-    @State private var navigation = NavigationPath()
-    @State private var tree: FolderTree?
-    @State private var treeError: GalleryError?
-    @State private var showsTree = false
+    @State private var navigator = Navigator()
+    @State private var treeStore: TreeStore
+    @State private var presenter = ViewerPresenter()
+    /// One flag, two meanings, both "is the tree showing": an overlay drawer on
+    /// iOS, the split view's sidebar column on macOS. The desktop starts with it
+    /// open — a permanent sidebar is the point there.
+    #if os(macOS)
+    @State private var drawerOpen = true
+    @State private var scrollZoomMonitor: Any?
+    #else
+    @State private var drawerOpen = false
+    #endif
+
+    /// How wide the iOS drawer is, and how far off-screen it parks.
+    private static let drawerWidth: CGFloat = 288
+
+    init() {
+        let client = GalleryClient(baseURL: AppConfig.baseURL)
+        self.client = client
+        _treeStore = State(initialValue: TreeStore(client: client))
+    }
 
     var body: some View {
+        ZStack {
+            shell
+
+            #if os(macOS)
+            // The player covers the *whole window*, sidebar included. It cannot
+            // live inside the folder screen: that screen is the split view's
+            // detail column, so an overlay it puts up would leave the tree
+            // showing beside the picture. See docs/adr/0007.
+            if let context = presenter.context {
+                viewer(context)
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
+            #endif
+        }
+        .environment(navigator)
+        .environment(treeStore)
+        .environment(presenter)
         #if os(macOS)
-        NavigationSplitView {
-            treeContent
+        .animation(.easeOut(duration: 0.18), value: presenter.context?.id)
+        #else
+        .fullScreenCover(item: viewerBinding) { context in
+            viewer(context)
+        }
+        #endif
+        .task { await treeStore.load() }
+        // The tree opens itself down to wherever the user is, so finding the
+        // current folder in it is never a hunt.
+        .onChange(of: navigator.currentPath, initial: true) { _, path in
+            treeStore.revealAncestors(of: path)
+        }
+    }
+
+    // MARK: - Platform shell
+
+    @ViewBuilder
+    private var shell: some View {
+        #if os(macOS)
+        // The sidebar is permanent on the desktop, so it needs no button to
+        // reveal it — which is what let the toolbar go away entirely.
+        NavigationSplitView(columnVisibility: splitVisibility) {
+            treePanel
                 .navigationSplitViewColumnWidth(min: 200, ideal: 260)
         } detail: {
             stack
         }
-        .toolbar {
-            ToolbarItem {
-                Button {
-                    FloatingWindowController.toggle(client: client)
-                } label: {
-                    Image(systemName: "pip")
-                }
-                .help("悬浮窗")
-                .accessibilityIdentifier("floating-toggle")
-            }
-        }
-        .task { await loadTree() }
+        .onAppear(perform: installScrollZoom)
+        .onDisappear(perform: removeScrollZoom)
         #else
-        stack
-            .sheet(isPresented: $showsTree) {
-                NavigationStack {
-                    treeContent
-                        .navigationTitle("文件夹")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) {
-                                Button("关闭") { showsTree = false }
-                            }
-                        }
-                }
-                .presentationDetents([.medium, .large])
+        ZStack(alignment: .leading) {
+            stack
+
+            if drawerOpen {
+                // Dimming the wall is what makes the drawer read as *over* the
+                // content rather than beside it, and gives the tap target that
+                // closes it.
+                Color.black.opacity(0.55)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture { drawerOpen = false }
+                    .zIndex(1)
             }
-            .task { await loadTree() }
+
+            treePanel
+                .frame(width: Self.drawerWidth)
+                .background(.regularMaterial)
+                .ignoresSafeArea(edges: .bottom)
+                // Parked off-screen rather than conditionally built: the tree
+                // keeps its expansion state and its scroll position across
+                // opens, and the slide has something to animate.
+                .offset(x: drawerOpen ? 0 : -(Self.drawerWidth + 24))
+                .shadow(color: .black.opacity(drawerOpen ? 0.4 : 0), radius: 16, x: 4)
+                // Parked off-screen is still *present*, and a present drawer
+                // stays in the accessibility tree: VoiceOver would swipe into a
+                // tree nobody can see, and a UI test "finds" nodes at x = -260
+                // that it then cannot tap.
+                .accessibilityHidden(!drawerOpen)
+                .zIndex(2)
+        }
+        .animation(.easeOut(duration: 0.28), value: drawerOpen)
         #endif
     }
 
     private var stack: some View {
-        NavigationStack(path: $navigation) {
-            FolderView(path: "", client: client)
-                .navigationDestination(for: Route.self) { route in
-                    switch route {
-                    case .folder(let path):
-                        FolderView(path: path, client: client)
-                    }
-                }
-                #if os(iOS)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            showsTree = true
-                        } label: {
-                            Image(systemName: "sidebar.leading")
-                        }
-                    }
-                }
-                #endif
+        // Bound to an array rather than a NavigationPath because the tree needs
+        // to know where the user is, and a NavigationPath will not say.
+        NavigationStack(path: navigatorRoutes) {
+            FolderView(
+                path: "",
+                view: navigator.rootView,
+                client: client,
+                drawerOpen: $drawerOpen
+            )
+            .navigationDestination(for: Route.self) { route in
+                FolderView(
+                    path: route.path,
+                    view: route.view,
+                    client: client,
+                    drawerOpen: $drawerOpen
+                )
+            }
         }
     }
 
+    // MARK: - Tree
+
     @ViewBuilder
-    private var treeContent: some View {
-        if let tree {
-            List(tree.root.children, children: \.optionalChildren) { node in
-                Button {
-                    jump(to: node.path)
-                } label: {
-                    Label(node.name, systemImage: node.isLeaf ? "folder" : "folder.fill")
+    private var treePanel: some View {
+        if let tree = treeStore.tree {
+            FolderTreeView(
+                nodes: tree.root.children,
+                selectedPath: navigator.currentPath,
+                isExpanded: { treeStore.isExpanded($0) },
+                onToggle: { treeStore.toggleExpansion($0) },
+                onSelect: { path in
+                    navigator.jump(to: path, hasChildren: treeStore.hasChildren(path))
+                    drawerOpen = false
                 }
-                .buttonStyle(.plain)
-            }
-        } else if let treeError {
-            ErrorStateView(error: treeError) {
-                Task { await loadTree() }
+            )
+        } else if let error = treeStore.error {
+            ErrorStateView(error: error) {
+                Task { await treeStore.load() }
             }
         } else {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    /// Jumping to an arbitrary folder is the whole point of keeping the tree —
-    /// it saves popping back up and drilling down again. The stack is reset to a
-    /// single entry so Back returns to the root rather than replaying the jump.
-    private func jump(to path: String) {
-        navigation = NavigationPath()
-        if !path.isEmpty {
-            navigation.append(Route.folder(path))
-        }
-        showsTree = false
+    // MARK: - Viewer
+
+    private func viewer(_ context: ViewerContext) -> some View {
+        ViewerView(
+            items: context.items,
+            startIndex: context.startIndex,
+            client: client,
+            onClose: { presenter.dismiss() },
+            onNearEnd: { Task { await presenter.requestMore() } },
+            totalCount: context.totalCount,
+            unbounded: context.unbounded
+        )
     }
 
-    private func loadTree() async {
-        guard tree == nil else { return }
-        do {
-            tree = try await client.tree()
-            treeError = nil
-        } catch let error as GalleryError {
-            treeError = error
-        } catch {
-            treeError = .badResponse
+    private var viewerBinding: Binding<ViewerContext?> {
+        Binding(
+            get: { presenter.context },
+            set: { if $0 == nil { presenter.dismiss() } }
+        )
+    }
+
+    #if os(macOS)
+    private var splitVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { drawerOpen ? .all : .detailOnly },
+            set: { drawerOpen = $0 != .detailOnly }
+        )
+    }
+
+    /// ⌘ + scroll wheel steps the column count, the same thing the web frontend
+    /// does with ctrl/⌘ + wheel.
+    ///
+    /// Installed once here rather than on the wall: a local monitor is
+    /// app-global, and there is one wall per screen on the navigation stack — so
+    /// attaching it per-wall would step the count once for every screen still
+    /// alive underneath.
+    private func installScrollZoom() {
+        guard scrollZoomMonitor == nil else { return }
+        var accumulated: CGFloat = 0
+        scrollZoomMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            guard event.modifierFlags.contains(.command) else { return event }
+            // A trackpad reports many small deltas per gesture and a mouse wheel
+            // one big one per notch; accumulating to a threshold makes both feel
+            // like discrete steps instead of a slider.
+            accumulated += event.scrollingDeltaY
+            let threshold: CGFloat = 6
+            while abs(accumulated) >= threshold {
+                let direction = accumulated > 0 ? 1 : -1
+                MainActor.assumeIsolated { WallColumns.shared.zoom(direction) }
+                accumulated -= CGFloat(direction) * threshold
+            }
+            // Swallowed: letting it through would scroll the wall at the same
+            // time as resizing it.
+            return nil
+        }
+    }
+
+    private func removeScrollZoom() {
+        if let scrollZoomMonitor { NSEvent.removeMonitor(scrollZoomMonitor) }
+        scrollZoomMonitor = nil
+    }
+    #endif
+
+    private var navigatorRoutes: Binding<[Route]> {
+        Binding(
+            get: { navigator.routes },
+            set: { navigator.routes = $0 }
+        )
+    }
+}
+
+struct ErrorStateView: View {
+    let error: GalleryError
+    let retry: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("打不开图库", systemImage: "wifi.exclamationmark")
+        } description: {
+            Text(error.localizedDescription)
+        } actions: {
+            Button("重试", action: retry)
         }
     }
 }
