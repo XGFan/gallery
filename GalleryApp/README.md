@@ -29,16 +29,16 @@ xcodebuild -project GalleryApp.xcodeproj -scheme GalleryApp \
 
 # iOS 模拟器
 xcodebuild -project GalleryApp.xcodeproj -scheme GalleryApp \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build build
+  -destination 'platform=iOS Simulator,name=iPhone 15 Pro Max' -derivedDataPath .build build
 
 # 单元测试（纯逻辑，不联网）
 xcodebuild test -project GalleryApp.xcodeproj -scheme GalleryApp \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build \
+  -destination 'platform=iOS Simulator,name=iPhone 15 Pro Max' -derivedDataPath .build \
   -only-testing:GalleryKitTests
 
 # E2E（打真实后端，见下）
 xcodebuild test -project GalleryApp.xcodeproj -scheme GalleryApp \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build \
+  -destination 'platform=iOS Simulator,name=iPhone 15 Pro Max' -derivedDataPath .build \
   -only-testing:GalleryAppUITests
 ```
 
@@ -58,7 +58,7 @@ The test runner failed to initialize for UI testing.
 装进模拟器手动看：
 
 ```shell
-SIM=$(xcrun simctl list devices available | grep -m1 "iPhone 17 Pro" | grep -oE '[0-9A-F-]{36}')
+SIM=$(xcrun simctl list devices available | grep -m1 "iPhone 15 Pro Max" | grep -oE '[0-9A-F-]{36}')
 xcrun simctl boot $SIM
 xcrun simctl install $SIM .build/Build/Products/Debug-iphonesimulator/GalleryApp.app
 xcrun simctl launch $SIM com.gallery.app
