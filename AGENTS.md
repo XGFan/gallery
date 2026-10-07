@@ -23,10 +23,11 @@
 - 预览构建：
   - `npm run preview`
 - 单元测试（Vitest）：
-  - `npm run test`
+  - `npm run test`（跑一次：`vitest run`）
+  - `npm run test:watch`（watch 模式：`vitest`）
   - 测试文件示例：`web/src/utils.test.ts`
 - E2E（Playwright）：
-  - `npm run test:e2e`
+  - `npm run test:e2e`（Chromium + WebKit × 桌面 1440×900 / 移动 430×932，四个 project：`chromium-desktop`、`chromium-mobile`、`webkit-desktop`、`webkit-mobile`）
   - 视频支持验证：`npm run test:e2e -- web/tests/media-video.spec.ts`
 
 #### 运行单个测试（前端）
@@ -69,7 +70,7 @@
 
 ## CI/CD 说明
 
-- `.drone.yml` 定义 Drone 流水线：构建 Docker 镜像并部署到 K8s。
+- `.woodpecker.yaml` 定义 Woodpecker 流水线：构建 Docker 镜像，再由 flux-bump 更新 infra 仓库的镜像 tag，Flux 完成部署。
 - 主要镜像构建入口为 `Dockerfile`。
 
 ## 代码风格与规范（当前仓库观察）
@@ -82,7 +83,7 @@
 
 ### TypeScript / React（web/）
 
-#### ESLint（`web/.eslintrc.cjs`）
+#### ESLint（`web/eslint.config.js`）
 
 - `eslint:recommended`
 - `@typescript-eslint/recommended`

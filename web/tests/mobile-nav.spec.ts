@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
 // and the breadcrumb becomes a vertical Path Sheet — so there is never any
 // horizontal scrolling and the two jobs no longer fight for the top axis.
 
-test.use({ viewport: { width: 390, height: 844 } })
+test.skip(({ isMobile }) => !isMobile, 'phone layout; runs in the mobile projects')
 
 const DEEP = 'holiday/2024/summer'
 

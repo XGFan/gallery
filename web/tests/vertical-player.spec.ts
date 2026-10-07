@@ -7,8 +7,23 @@ async function expectVideoOrFallback(locator: Locator) {
   await expect(video.or(fallback)).toBeVisible();
 }
 
+// Wait for the slide's enter animation to settle; a swipe dispatched mid-animation
+// can be swallowed under load (seen intermittently in webkit-mobile).
+async function settledBox(slide: Locator) {
+  let prev = await slide.boundingBox();
+  for (let i = 0; i < 20; i += 1) {
+    await slide.page().waitForTimeout(50);
+    const box = await slide.boundingBox();
+    if (box && prev && box.x === prev.x && box.y === prev.y && box.width === prev.width && box.height === prev.height) {
+      return box;
+    }
+    prev = box;
+  }
+  return prev;
+}
+
 async function swipeUp(page: Page, slide: Locator) {
-  const box = await slide.boundingBox();
+  const box = await settledBox(slide);
   if (!box) throw new Error('Player not found');
 
   const startX = box.x + box.width / 2;
@@ -223,7 +238,8 @@ test.describe('VerticalPlayer Integration', () => {
     await expectVideoOrFallback(page.getByTestId('slide-2'));
   });
 
-  test('scrolls/wheels between items', async ({ page }) => {
+  test('scrolls/wheels between items', async ({ page, isMobile }) => {
+    test.skip(isMobile, 'wheel is desktop input; Playwright mobile WebKit has no mouse.wheel');
     await page.goto('/?mode=image');
     // Click Video 1
     await page.getByAltText('Video 1').click();

@@ -67,8 +67,9 @@ go test ./...
 ```bash
 cd web
 npm run lint   # 静态检查
-npm run test   # 单元测试 (Vitest)
-npm run test:e2e # E2E 测试 (Playwright)
+npm run test   # 单元测试 (Vitest，跑一次)
+npm run test:watch # 单元测试 (Vitest，watch 模式)
+npm run test:e2e # E2E 测试 (Playwright，Chromium + WebKit × 桌面/移动 四个 project)
 ```
 
 ## 常见问题 (FAQ)

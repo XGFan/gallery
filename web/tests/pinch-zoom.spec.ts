@@ -6,7 +6,7 @@ import { expect, test, type Page } from '@playwright/test'
 // logic is covered cross-engine by the unit tests in
 // src/hooks/usePinchZoom.test.ts and src/gridLayout.test.ts.
 test.skip(({ browserName }) => browserName !== 'chromium', 'CDP gesture input is Chromium-only')
-test.use({ viewport: { width: 1280, height: 800 } })
+test.skip(({ isMobile }) => isMobile, 'a phone wall opens at the 1-column minimum, so zoom-in from the default needs desktop width')
 
 const IMAGE_COUNT = 24
 

@@ -21,8 +21,6 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test.use({ viewport: { width: 375, height: 667 } })
-
 test('toggles mixed mode in shuffle settings', async ({ page }) => {
   await page.goto('/')
 

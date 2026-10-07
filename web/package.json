@@ -8,12 +8,13 @@
   },
   "scripts": {
     "dev": "vite --host",
-    "dev:local": "vite --host --mode local",
+    "dev:local": "vite --host",
     "dev:remote": "vite --host --mode remote",
     "build": "tsc && vite build",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:e2e": "playwright test"
   },
   "dependencies": {
