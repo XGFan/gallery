@@ -56,7 +56,7 @@ export const GalleryItem = memo(function GalleryItem({ item, size, onClick }: Ga
             onKeyDown={handleKeyDown}
         >
             {/* Simple container with subtle interactions */}
-            <div className="rounded-lg overflow-hidden bg-fill hover:bg-fill-hover transition-colors duration-200 w-full h-full relative">
+            <div className="overflow-hidden bg-fill hover:bg-fill-hover transition-colors duration-200 w-full h-full relative">
                 <img
                     src={item.src}
                     alt={item.name}

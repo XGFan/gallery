@@ -299,7 +299,7 @@ export default function Viewer() {
         }}
         rowHeightRange={{ min: rowHeight * 0.7, max: rowHeight * 1.3 }}
         maxColumns={effectiveColumns}
-        gap={4}
+        gap={0}
       />
       </div>
     </InfiniteScroll>
