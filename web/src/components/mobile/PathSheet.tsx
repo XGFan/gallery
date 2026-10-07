@@ -35,18 +35,18 @@ export default function PathSheet({ isOpen, breadcrumbs, onClose, onNavigate }: 
       aria-label="Path navigation"
     >
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-xs animate-fade-in"
+        className="absolute inset-0 bg-scrim backdrop-blur-xs animate-fade-in"
         onClick={onClose}
         aria-hidden="true"
       />
 
       <div
-        className="relative bg-glass-heavy backdrop-blur-lg border-t border-white/20 rounded-t-3xl shadow-[0_-8px_32px_rgba(0,0,0,0.4)] ring-1 ring-white/10 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-3 px-3 max-h-[70vh] overflow-y-auto custom-scrollbar animate-sheet-up"
+        className="relative bg-surface-strong backdrop-ui border-t border-line rounded-t-ui-xl shadow-ui-lg pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-3 px-3 max-h-[70vh] overflow-y-auto custom-scrollbar animate-sheet-up"
       >
         {/* Grabber */}
-        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-white/25" />
+        <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-line-strong" />
 
-        <div className="px-1 pb-1 text-[11px] font-bold uppercase tracking-[0.2em] text-white/40">
+        <div className="px-1 pb-1 text-[11px] font-bold uppercase tracking-[0.2em] text-fg-3">
           Path
         </div>
 
@@ -64,13 +64,13 @@ export default function PathSheet({ isOpen, breadcrumbs, onClose, onNavigate }: 
                   }}
                   aria-current={isCurrent ? "page" : undefined}
                   className={clsx(
-                    "flex w-full items-center gap-3 rounded-2xl py-3 text-left transition-colors",
-                    isCurrent ? "text-white font-semibold bg-white/10" : "text-white/70 hover:bg-white/5 active:bg-white/10"
+                    "flex w-full items-center gap-3 rounded-ui-md py-3 text-left transition-colors",
+                    isCurrent ? "text-fg font-semibold bg-fill-hover" : "text-fg-2 hover:bg-fill active:bg-fill-hover"
                   )}
                   style={{ paddingLeft: `${idx * 18 + 12}px`, paddingRight: "12px" }}
                 >
                   {idx > 0 && (
-                    <span className="text-white/25 select-none" aria-hidden="true">
+                    <span className="text-fg-3 select-none" aria-hidden="true">
                       └
                     </span>
                   )}
@@ -78,7 +78,7 @@ export default function PathSheet({ isOpen, breadcrumbs, onClose, onNavigate }: 
                     <Home className="w-5 h-5 shrink-0" strokeWidth={2} />
                   ) : null}
                   <span className="truncate flex-1">{isHome ? "Home" : crumb.name}</span>
-                  {isCurrent && <Check className="w-4 h-4 shrink-0 text-white/70" strokeWidth={2.5} />}
+                  {isCurrent && <Check className="w-4 h-4 shrink-0 text-fg-2" strokeWidth={2.5} />}
                 </button>
               </li>
             );

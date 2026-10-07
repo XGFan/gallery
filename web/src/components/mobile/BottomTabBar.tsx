@@ -30,7 +30,7 @@ export default function BottomTabBar({ modes, currentMode, isVisible, onSelect }
         !isVisible && "bottombar-hidden",
       )}
     >
-      <div className="flex items-center gap-2 bg-glass-liquid backdrop-blur-lg border border-white/20 rounded-full p-2 shadow-[0_4px_24px_rgba(0,0,0,0.35)] ring-1 ring-white/10 pointer-events-auto max-w-[calc(100vw-1rem)]">
+      <div className="flex items-center gap-2 bg-surface backdrop-ui border border-line rounded-full p-2 shadow-ui pointer-events-auto max-w-[calc(100vw-1rem)]">
         {modes.map((mode) => {
           const active = mode.id === currentMode;
           return (
@@ -43,8 +43,8 @@ export default function BottomTabBar({ modes, currentMode, isVisible, onSelect }
               className={clsx(
                 "flex flex-col items-center justify-center gap-1 rounded-full px-3 py-2 min-w-[76px] transition-colors duration-300",
                 active
-                  ? "bg-white/15 text-accent"
-                  : "text-white/55 hover:text-white/90",
+                  ? "bg-selected text-accent-text shadow-sm"
+                  : "text-fg-2 hover:text-fg",
               )}
             >
               <mode.icon className="w-6 h-6" strokeWidth={2} />

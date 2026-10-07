@@ -56,7 +56,7 @@ export const GalleryItem = memo(function GalleryItem({ item, size, onClick }: Ga
             onKeyDown={handleKeyDown}
         >
             {/* Simple container with subtle interactions */}
-            <div className="rounded-lg overflow-hidden bg-white/[0.02] hover:bg-white/[0.05] transition-colors duration-200 w-full h-full relative">
+            <div className="rounded-lg overflow-hidden bg-fill hover:bg-fill-hover transition-colors duration-200 w-full h-full relative">
                 <img
                     src={item.src}
                     alt={item.name}
@@ -68,23 +68,23 @@ export const GalleryItem = memo(function GalleryItem({ item, size, onClick }: Ga
             {isVideo && (
                 <>
                     <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/20 transition-colors">
-                        <div className={`p-3 rounded-full bg-black/40 backdrop-blur-xs border border-white/20 text-white shadow-lg ${isPlayable ? 'group-hover:scale-110 transition-transform' : 'opacity-70'}`}>
+                        <div className={`p-3 rounded-full bg-overlay backdrop-blur-xs border border-overlay-line text-on-overlay shadow-lg ${isPlayable ? 'group-hover:scale-110 transition-transform' : 'opacity-70'}`}>
                             {isPlayable ? (
-                                <Play className="w-6 h-6 fill-white" aria-hidden="true" />
+                                <Play className="w-6 h-6 fill-on-overlay" aria-hidden="true" />
                             ) : (
                                 <Video className="w-6 h-6" aria-hidden="true" />
                             )}
                         </div>
                     </div>
                         {item.durationSec && item.durationSec > 0 ? (
-                            <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/50 backdrop-blur-md border border-white/10">
-                                <span className="text-[10px] font-medium tracking-wide text-white/90">
+                            <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-ui-sm bg-overlay backdrop-blur-md border border-overlay-line">
+                                <span className="text-[10px] font-medium tracking-wide text-on-overlay">
                                     {formatDuration(item.durationSec)}
                                 </span>
                             </div>
                         ) : (
-                            <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/50 backdrop-blur-md border border-white/10">
-                                <div className="flex items-center gap-1 text-white/90">
+                            <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-ui-sm bg-overlay backdrop-blur-md border border-overlay-line">
+                                <div className="flex items-center gap-1 text-on-overlay">
                                     <Video className="w-3 h-3" />
                                     <span className="text-[10px] font-medium tracking-wide uppercase">
                                         Video
@@ -98,8 +98,8 @@ export const GalleryItem = memo(function GalleryItem({ item, size, onClick }: Ga
 
             {/* Directory Overlay */}
             {item.imageType === 'directory' && (
-                <div className="absolute inset-x-0 bottom-0 p-2 bg-black/60 backdrop-blur-xs pointer-events-none">
-                    <div className="flex items-center gap-1.5 text-white/90">
+                <div className="absolute inset-x-0 bottom-0 p-2 bg-overlay-strong backdrop-blur-xs pointer-events-none">
+                    <div className="flex items-center gap-1.5 text-on-overlay">
                         <FolderOpen className="w-3.5 h-3.5" aria-hidden="true" />
                         <span className="text-xs font-medium truncate leading-tight">{item.name}</span>
                     </div>

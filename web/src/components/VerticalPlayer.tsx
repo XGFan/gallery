@@ -72,7 +72,7 @@ function VideoProgressBar({ videoRef, progressCache, videoKey }: VideoProgressBa
 
   return (
     <div className="w-full max-w-md pointer-events-auto flex flex-col items-center">
-      <div className="flex justify-between w-full text-xs text-white/80 mb-2 font-mono drop-shadow-md">
+      <div className="flex justify-between w-full text-xs text-on-overlay mb-2 font-mono drop-shadow-md">
          <span>{formatTime(currentTime)}</span>
          <span>{formatTime(duration)}</span>
       </div>
@@ -123,12 +123,12 @@ function VideoProgressBar({ videoRef, progressCache, videoKey }: VideoProgressBa
           setIsDragging(false);
         }}
       >
-        <div className="w-full h-1.5 bg-white/30 rounded-full relative group-hover:h-2 transition-all shadow-xs pointer-events-none">
+        <div className="w-full h-1.5 bg-overlay-fill-hover rounded-full relative group-hover:h-2 transition-all shadow-xs pointer-events-none">
           <div
-            className="absolute left-0 top-0 bottom-0 bg-white rounded-full"
+            className="absolute left-0 top-0 bottom-0 bg-on-overlay rounded-full"
             style={{ width: `${(currentTime / duration) * 100}%` }}
           >
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity translate-x-1/2 shadow-md" />
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-on-overlay rounded-full opacity-0 group-hover:opacity-100 transition-opacity translate-x-1/2 shadow-md" />
           </div>
         </div>
       </div>
@@ -162,9 +162,9 @@ function ThinProgressBar({ videoRef }: ThinProgressBarProps) {
   if (progress <= 0) return null;
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-white/20 z-40 pointer-events-none">
+    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-overlay-line z-40 pointer-events-none">
       <div
-        className="h-full bg-white/70"
+        className="h-full bg-on-overlay-2"
         style={{ width: `${progress}%` }}
       />
     </div>
@@ -339,7 +339,7 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
     >
       <button
         type="button"
-        className="absolute top-4 right-4 z-50 p-2 text-white/80 hover:text-white bg-black/20 rounded-full"
+        className="absolute top-4 right-4 z-50 p-2 text-on-overlay-2 hover:text-on-overlay bg-overlay rounded-full"
         onClick={(e) => { e.stopPropagation(); onClose(); }}
       >
         <X size={24} />
@@ -367,7 +367,7 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
         >
           {currentItem.imageType === 'video' ? (
             videoError ? (
-              <div className="w-full h-full flex flex-col items-center justify-center text-white" data-testid="video-fallback">
+              <div className="w-full h-full flex flex-col items-center justify-center text-on-overlay" data-testid="video-fallback">
                  {currentItem.src && (
                     <img
                       src={currentItem.src}
@@ -375,7 +375,7 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
                       className="absolute inset-0 w-full h-full object-contain -z-10 opacity-50"
                     />
                  )}
-                 <div className="z-10 bg-black/50 p-4 rounded-lg flex flex-col items-center gap-2">
+                 <div className="z-10 bg-overlay p-4 rounded-lg flex flex-col items-center gap-2">
                     <span className="text-lg font-medium">视频加载失败</span>
                     <span className="text-sm opacity-70">无法播放此视频</span>
                  </div>
@@ -416,7 +416,7 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-6 z-40 p-6 pb-12 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none"
+            className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-6 z-40 p-6 pb-12 bg-gradient-to-t from-overlay-strong via-overlay to-transparent pointer-events-none"
           >
             {currentItem.imageType === 'video' && (
               <VideoProgressBar
@@ -427,10 +427,10 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
             )}
 
             <div className="flex justify-center items-center gap-12 pointer-events-auto mt-2">
-                 <button type="button" onClick={(e) => handleToggle(e, 'mute')} className="p-4 bg-white/10 rounded-full backdrop-blur-md text-white hover:bg-white/20 transition-colors shadow-lg">
+                 <button type="button" onClick={(e) => handleToggle(e, 'mute')} className="p-4 bg-overlay-fill rounded-full backdrop-blur-md text-on-overlay hover:bg-overlay-fill-hover transition-colors shadow-lg">
                      {isMuted ? <VolumeX size={28} /> : <Volume2 size={28} />}
                  </button>
-                 <button type="button" onClick={(e) => handleToggle(e, 'play')} className="p-4 bg-white/10 rounded-full backdrop-blur-md text-white hover:bg-white/20 transition-colors shadow-lg">
+                 <button type="button" onClick={(e) => handleToggle(e, 'play')} className="p-4 bg-overlay-fill rounded-full backdrop-blur-md text-on-overlay hover:bg-overlay-fill-hover transition-colors shadow-lg">
                      {isPlaying ? <Pause size={28} /> : <Play size={28} />}
                  </button>
             </div>
@@ -444,7 +444,7 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
 
       {showMuteHint && (
           <div
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 px-4 py-2 bg-black/60 text-white rounded-lg pointer-events-auto cursor-pointer flex items-center gap-2"
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 px-4 py-2 bg-overlay-strong text-on-overlay rounded-lg pointer-events-auto cursor-pointer flex items-center gap-2"
             onClick={(e) => handleToggle(e, 'mute')}
             onKeyDown={(e) => e.key === 'Enter' && handleToggle(e, 'mute')}
             role="button"
@@ -455,7 +455,7 @@ export default function VerticalPlayer({ items, initialIndex, onClose }: Vertica
           </div>
       )}
 
-      <div className="absolute top-4 left-4 z-40 text-white/50 text-xs">
+      <div className="absolute top-4 left-4 z-40 text-on-overlay-2 text-xs">
           {index + 1} / {items.length}
       </div>
     </div>

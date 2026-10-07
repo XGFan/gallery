@@ -281,7 +281,7 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
             <div
                 ref={breadcrumbRef}
                 className={clsx(
-                    "flex items-center bg-glass-liquid backdrop-blur-lg border border-white/20 rounded-full h-12 shadow-[0_4px_16px_rgba(0,0,0,0.2)] ring-1 ring-white/10 pointer-events-auto transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden translate-z-0 will-change-transform",
+                    "flex items-center bg-surface backdrop-ui border border-line rounded-full h-12 shadow-ui pointer-events-auto transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden translate-z-0 will-change-transform",
                     isBreadcrumbExpanded
                         ? "px-4 md:px-6 w-auto max-w-[calc(100vw-2rem)] md:max-w-[calc(100vw-3rem)]"
                         : "px-4 max-w-[240px] md:max-w-[480px] lg:max-w-[720px] xl:max-w-[1000px]",
@@ -296,7 +296,7 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
 
                 {/* Breadcrumbs */}
                 <nav aria-label="Breadcrumb" className={clsx(
-                    "flex items-center gap-1 text-sm font-medium text-white/80 overflow-hidden whitespace-nowrap min-w-0",
+                    "flex items-center gap-1 text-sm font-medium text-fg overflow-hidden whitespace-nowrap min-w-0",
                     // Only add right padding when expanded or has multiple breadcrumbs
                     (isBreadcrumbExpanded || breadcrumbs.length > 1) && "pr-2"
                 )}>
@@ -308,13 +308,13 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                                     e.stopPropagation();
                                     onSidebarToggle();
                                 }}
-                                className="flex items-center justify-center w-9 h-9 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition-all duration-300 shrink-0 ml-1"
+                                className="flex items-center justify-center w-9 h-9 rounded-full text-fg-2 hover:text-fg hover:bg-fill-hover transition-all duration-300 shrink-0 ml-1"
                                 aria-label={isSidebarOpen ? "Close Sidebar" : "Open Sidebar"}
                             >
                                 <HardDrive className="w-5 h-5" strokeWidth={1.5} />
                             </button>
                             {/* Divider */}
-                            <div className="w-px h-5 bg-white/20 mx-1 shrink-0" />
+                            <div className="w-px h-5 bg-line mx-1 shrink-0" />
                         </>
                     )}
                     {(():ReactNode => {
@@ -325,7 +325,7 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
 
                             if (isHome) return (
                                 <div className="flex items-center">
-                                    <button className="flex items-center gap-1 px-2 py-1 rounded-md text-white cursor-default font-semibold">
+                                    <button className="flex items-center gap-1 px-2 py-1 rounded-md text-fg cursor-default font-semibold">
                                         <Home className="w-5 h-5" />
                                     </button>
                                 </div>
@@ -334,17 +334,17 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                             return (
                                 <>
                                     <div className="flex items-center">
-                                        <button onClick={(e) => { e.stopPropagation(); navigate(`/?mode=album`); }} className="flex items-center gap-1 px-1 py-1 rounded-md text-white/50 hover:text-white">
+                                        <button onClick={(e) => { e.stopPropagation(); navigate(`/?mode=album`); }} className="flex items-center gap-1 px-1 py-1 rounded-md text-fg-2 hover:text-fg">
                                             <Home className="w-5 h-5" />
                                         </button>
-                                        <ChevronRight className="w-3.5 h-3.5 text-white/20 mx-0.5" />
+                                        <ChevronRight className="w-3.5 h-3.5 text-fg-3 mx-0.5" />
                                     </div>
                                     <div className="flex items-center">
-                                        <span className="text-white/30 px-1">...</span>
-                                        <ChevronRight className="w-3.5 h-3.5 text-white/20 mx-0.5" />
+                                        <span className="text-fg-3 px-1">...</span>
+                                        <ChevronRight className="w-3.5 h-3.5 text-fg-3 mx-0.5" />
                                     </div>
                                     <div className="flex items-center min-w-0 flex-1">
-                                        <button className="flex items-center gap-1 px-1 py-1 rounded-md text-white cursor-default font-semibold min-w-0">
+                                        <button className="flex items-center gap-1 px-1 py-1 rounded-md text-fg cursor-default font-semibold min-w-0">
                                             <span className="truncate">{current.name}</span>
                                         </button>
                                     </div>
@@ -371,8 +371,8 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                                                 segmentRefs.current[idx] = el;
                                             }}
                                         >
-                                            <span className="text-white/30 px-1">...</span>
-                                            <ChevronRight className="w-3.5 h-3.5 text-white/20 mx-0.5" />
+                                            <span className="text-fg-3 px-1">...</span>
+                                            <ChevronRight className="w-3.5 h-3.5 text-fg-3 mx-0.5" />
                                         </div>
                                     );
                                 }
@@ -403,16 +403,16 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                                             "flex items-center transition-colors min-w-0",
                                             // Home icon button: circular like sidebar button
                                             item.icon && !item.name
-                                                ? "justify-center w-9 h-9 rounded-full hover:bg-white/10"
-                                                : "gap-1 px-2 py-1 rounded-md hover:bg-white/10",
-                                            isLast ? "text-white cursor-default font-semibold overflow-hidden" : "text-white/60 hover:text-white"
+                                                ? "justify-center w-9 h-9 rounded-full hover:bg-fill-hover"
+                                                : "gap-1 px-2 py-1 rounded-md hover:bg-fill-hover",
+                                            isLast ? "text-fg cursor-default font-semibold overflow-hidden" : "text-fg-2 hover:text-fg"
                                         )}
                                         disabled={isLast}
                                     >
                                         {item.icon}
                                         {item.name && <span className="truncate">{item.name}</span>}
                                     </button>
-                                    {!isLast && <ChevronRight className="w-3.5 h-3.5 text-white/20 mx-0.5 shrink-0" />}
+                                    {!isLast && <ChevronRight className="w-3.5 h-3.5 text-fg-3 mx-0.5 shrink-0" />}
                                 </div>
                             );
                         });
@@ -423,10 +423,10 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
             {/* Right Island: View Switcher - Collapsible */}
             <div
                 className={clsx(
-                    "flex bg-glass-liquid backdrop-blur-lg border border-white/20 h-12 w-12 items-center shadow-[0_4px_16px_rgba(0,0,0,0.2)] ring-1 ring-white/10 pointer-events-auto transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden translate-z-0 will-change-transform shrink-0 rounded-3xl",
+                    "flex bg-surface backdrop-ui border border-line h-12 w-12 items-center shadow-ui pointer-events-auto transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative overflow-hidden translate-z-0 will-change-transform shrink-0 rounded-3xl",
                     isSwitcherExpanded
                         ? "px-1 py-1 md:px-2 md:py-0 !w-auto flex-col md:flex-row h-auto md:h-12 items-stretch md:items-center self-start"
-                        : "px-0 justify-center cursor-pointer hover:bg-white/10 hover:shadow-glow",
+                        : "px-0 justify-center cursor-pointer",
                     // Hide switcher when: breadcrumb expanded, should be hidden, or only one mode available
                     (shouldHideSwitcher || isBreadcrumbExpanded || availableModes.length <= 1) && "opacity-0 pointer-events-none translate-x-10 scale-95 !w-0 p-0 border-0"
                 )}
@@ -456,10 +456,11 @@ export default function TopBar({ onSidebarToggle, isSidebarOpen }: TopBarProps) 
                                 isSwitcherExpanded
                                     ? "px-4 py-3 md:px-5 md:py-2 w-full md:w-auto justify-start md:justify-center"
                                     : "w-full h-full justify-center p-0",
-                                currentMode === mode.id && isSwitcherExpanded
-                                    ? "bg-white/10 text-white shadow-inner border border-white/10 backdrop-blur-md"
-                                    : "text-white/40 hover:text-white/80 hover:bg-white/5",
-                                !isSwitcherExpanded && "text-white"
+                                !isSwitcherExpanded
+                                    ? "text-fg"
+                                    : currentMode === mode.id
+                                        ? "bg-selected text-fg shadow-sm"
+                                        : "text-fg-2 hover:text-fg hover:bg-fill-hover"
                             )}
                         >
                             <mode.icon className="w-5 h-5" strokeWidth={2} />

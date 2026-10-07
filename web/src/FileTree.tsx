@@ -60,7 +60,7 @@ export default function FileTree() {
 
   const navigate = useNavigate();
   if (!tree.title) {
-    return <div className="p-4 text-center text-xs text-white/30">Loading...</div>
+    return <div className="p-4 text-center text-xs text-fg-3">Loading...</div>
   }
 
   return <Tree

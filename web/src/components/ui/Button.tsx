@@ -8,10 +8,10 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 export function Button({ className, variant = "glass", size = "md", ...props }: ButtonProps) {
     const variants = {
-        primary: "bg-blue-500 hover:bg-blue-600 text-white border-transparent shadow-lg shadow-blue-500/20",
-        ghost: "bg-transparent hover:bg-white/10 text-white/90 hover:text-white border-transparent",
-        glass: "bg-white/10 hover:bg-white/20 text-white backdrop-blur-md border-white/10 border shadow-xs",
-        "glass-icon": "bg-black/30 hover:bg-black/50 text-white backdrop-blur-md border-white/5 border shadow-xs",
+        primary: "bg-accent hover:bg-accent-hover text-on-accent border-transparent shadow-lg shadow-accent/20",
+        ghost: "bg-transparent hover:bg-fill-hover text-fg border-transparent",
+        glass: "bg-fill hover:bg-fill-hover text-fg backdrop-blur-md border-line border shadow-xs",
+        "glass-icon": "bg-overlay hover:bg-overlay-strong text-on-overlay backdrop-blur-md border-overlay-line border shadow-xs",
     }
 
     const sizes = {
@@ -24,9 +24,9 @@ export function Button({ className, variant = "glass", size = "md", ...props }: 
     return (
         <button
             className={cn(
-                "inline-flex items-center justify-center rounded-xl transition-all duration-200 active:scale-95",
+                "inline-flex items-center justify-center rounded-ui-md transition-all duration-200 active:scale-95",
                 "disabled:opacity-50 disabled:pointer-events-none",
-                "focus:outline-hidden focus:ring-2 focus:ring-white/20",
+                "focus:outline-hidden focus:ring-2 focus:ring-line-strong",
                 variants[variant],
                 sizes[size],
                 className

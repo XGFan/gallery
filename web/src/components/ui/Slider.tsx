@@ -23,14 +23,14 @@ export function Slider({ min, max, value, step = 1, onChange, className }: Slide
                 onChange={(e) => onChange(Number(e.target.value))}
                 className="absolute h-full w-full opacity-0 cursor-pointer z-10"
             />
-            <div className="relative h-2 w-full grow overflow-hidden rounded-full bg-white/10">
+            <div className="relative h-2 w-full grow overflow-hidden rounded-full bg-fill-hover">
                 <div
-                    className="h-full bg-white/50 transition-all"
+                    className="h-full bg-fg-2 transition-all"
                     style={{ width: `${percentage}%` }}
                 />
             </div>
             <div
-                className="block h-5 w-5 rounded-full border-2 border-white/50 bg-white ring-offset-black transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+                className="block h-5 w-5 rounded-full border border-line-strong bg-white shadow-sm transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
                 style={{
                     position: 'absolute',
                     left: `calc(${percentage}% - 10px)`

@@ -241,7 +241,7 @@ export default function Viewer() {
     {/* Mode switcher removed - moved to TopBar */}
     <InfiniteScroll dataLength={album.images.length}
       hasMore={fullAlbum.images.length > album.images.length}
-      loader={<div className="text-white/50 text-center py-4">Loading more...</div>}
+      loader={<div className="text-fg-2 text-center py-4">Loading more...</div>}
       scrollThreshold={0.9}
       className="w-full"
       next={fetchNew}>
@@ -309,7 +309,7 @@ export default function Viewer() {
       className={`fixed counter-safe z-50 transition-opacity duration-300 ${counterVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       aria-label="Open settings"
     >
-      <div className="px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 text-white/80 text-sm shadow-lg hover:bg-black/50">
+      <div className="px-3 py-1.5 bg-surface backdrop-ui rounded-full border border-line text-fg text-sm shadow-ui hover:bg-surface-strong">
         {album.images.length} / {fullAlbum.images.length}
       </div>
     </button>
@@ -319,7 +319,7 @@ export default function Viewer() {
       title="Settings"
     >
       <div className="grid grid-cols-[auto_1fr_auto] gap-4 items-center">
-        <div className="text-sm font-medium text-white/80">
+        <div className="text-sm font-medium text-fg">
           Columns
         </div>
         <div>
@@ -331,7 +331,7 @@ export default function Viewer() {
             step={1}
           />
         </div>
-        <div className="text-sm font-mono text-white/60 w-10 text-right">
+        <div className="text-sm font-mono text-fg-2 w-10 text-right">
           {effectiveColumns}
         </div>
       </div>

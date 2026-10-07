@@ -30,22 +30,22 @@ export function Modal({ isOpen, onClose, children, title }: ModalProps) {
             aria-labelledby="modal-title"
         >
             <div
-                className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+                className="fixed inset-0 bg-scrim backdrop-blur-xs transition-opacity"
                 onClick={onClose}
                 aria-hidden="true"
             />
 
             <GlassPanel
                 intensity="high"
-                className="relative transform overflow-hidden w-full max-w-lg p-6 shadow-2xl transition-all animate-in fade-in zoom-in-95 duration-300"
+                className="relative transform overflow-hidden w-full max-w-lg p-6 rounded-ui-xl shadow-ui-lg transition-all animate-in fade-in zoom-in-95 duration-300"
             >
                 <div className="flex items-center justify-between mb-4">
-                    <div id="modal-title" className="text-lg font-semibold text-white/90">{title}</div>
+                    <div id="modal-title" className="text-lg font-semibold text-fg">{title}</div>
                     <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-full" aria-label="Close">
                         <X className="h-4 w-4" aria-hidden="true" />
                     </Button>
                 </div>
-                <div className="text-white/80">
+                <div className="text-fg">
                     {children}
                 </div>
             </GlassPanel>

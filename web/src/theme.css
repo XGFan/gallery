@@ -1,0 +1,121 @@
+/*
+ * Shared design tokens for gallery / avp / saver.
+ * The three repos carry an identical copy of this file at web/src/theme.css —
+ * edit one, copy to the other two.
+ *
+ * Two families:
+ *  - Surface tokens follow the system light/dark scheme (page, panels, inputs,
+ *    floating pills, sheets, modals).
+ *  - Overlay tokens are always dark: chrome drawn directly on top of photos or
+ *    video (captions, badges, player controls, lightbox) must stay legible over
+ *    arbitrary media regardless of scheme.
+ */
+:root {
+  color-scheme: light dark;
+
+  --ui-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+
+  /* Page */
+  --ui-bg: #eef1f7;
+  --ui-bg-image:
+    radial-gradient(at 0% 0%, hsla(220, 60%, 97%, 1) 0, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 70%, 90%, 1) 0, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(339, 70%, 93%, 1) 0, transparent 50%);
+
+  /* Text */
+  --ui-text: rgba(15, 23, 42, 0.9);
+  --ui-text-2: rgba(15, 23, 42, 0.6);
+  --ui-text-3: rgba(15, 23, 42, 0.4);
+
+  /* Glass surfaces */
+  --ui-surface: rgba(255, 255, 255, 0.72);        /* cards, panels, floating pills */
+  --ui-surface-strong: rgba(255, 255, 255, 0.9);  /* modals, sheets, drawers, popovers */
+  --ui-blur: blur(20px) saturate(180%);
+  --ui-border: rgba(15, 23, 42, 0.08);
+  --ui-border-strong: rgba(15, 23, 42, 0.16);
+  --ui-shadow: 0 8px 32px rgba(15, 23, 42, 0.1);
+  --ui-shadow-lg: 0 20px 48px rgba(15, 23, 42, 0.16);
+  --ui-scrim: rgba(15, 23, 42, 0.25);
+
+  /* Control fills (inputs, ghost buttons, chips, segmented tracks) */
+  --ui-fill: rgba(15, 23, 42, 0.05);
+  --ui-fill-hover: rgba(15, 23, 42, 0.09);
+  --ui-fill-active: rgba(15, 23, 42, 0.14);
+  --ui-selected: #ffffff;                          /* selected segment / tab */
+
+  /* Accent + status */
+  --ui-accent: #3b82f6;
+  --ui-accent-hover: #2563eb;
+  --ui-accent-soft: rgba(59, 130, 246, 0.12);
+  --ui-accent-text: #2563eb;                       /* links, accent-coloured text */
+  --ui-on-accent: #ffffff;
+  --ui-success: #059669;
+  --ui-success-soft: rgba(16, 185, 129, 0.12);
+  --ui-warning: #d97706;
+  --ui-warning-soft: rgba(245, 158, 11, 0.14);
+  --ui-danger: #dc2626;
+  --ui-danger-soft: rgba(239, 68, 68, 0.12);
+
+  /* Media overlay — identical in both schemes */
+  --ui-overlay: rgba(0, 0, 0, 0.45);
+  --ui-overlay-strong: rgba(0, 0, 0, 0.65);
+  --ui-overlay-fill: rgba(255, 255, 255, 0.12);
+  --ui-overlay-fill-hover: rgba(255, 255, 255, 0.22);
+  --ui-overlay-border: rgba(255, 255, 255, 0.18);
+  --ui-on-overlay: rgba(255, 255, 255, 0.92);
+  --ui-on-overlay-2: rgba(255, 255, 255, 0.68);
+
+  /* Shape */
+  --ui-radius-sm: 8px;    /* tags, small badges */
+  --ui-radius-md: 12px;   /* inputs, buttons, list rows */
+  --ui-radius-lg: 16px;   /* cards */
+  --ui-radius-xl: 20px;   /* modals, sheets, popovers */
+  --ui-radius-pill: 9999px; /* floating pills, chips, segmented controls, icon buttons */
+
+  /* Control sizes */
+  --ui-h-sm: 28px;
+  --ui-h-md: 36px;
+  --ui-h-lg: 44px;
+
+  /* Motion */
+  --ui-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ui-dur-fast: 0.2s;
+  --ui-dur: 0.3s;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ui-bg: #0f172a;
+    --ui-bg-image:
+      radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+      radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 1) 0, transparent 50%),
+      radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 1) 0, transparent 50%);
+
+    --ui-text: rgba(255, 255, 255, 0.9);
+    --ui-text-2: rgba(255, 255, 255, 0.6);
+    --ui-text-3: rgba(255, 255, 255, 0.4);
+
+    --ui-surface: rgba(30, 32, 40, 0.6);
+    --ui-surface-strong: rgba(24, 26, 34, 0.88);
+    --ui-border: rgba(255, 255, 255, 0.1);
+    --ui-border-strong: rgba(255, 255, 255, 0.2);
+    --ui-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    --ui-shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.5);
+    --ui-scrim: rgba(0, 0, 0, 0.5);
+
+    --ui-fill: rgba(255, 255, 255, 0.08);
+    --ui-fill-hover: rgba(255, 255, 255, 0.14);
+    --ui-fill-active: rgba(255, 255, 255, 0.2);
+    --ui-selected: rgba(255, 255, 255, 0.22);
+
+    --ui-accent-soft: rgba(59, 130, 246, 0.2);
+    --ui-accent-text: #60a5fa;
+    --ui-success: #34d399;
+    --ui-success-soft: rgba(16, 185, 129, 0.18);
+    --ui-warning: #fbbf24;
+    --ui-warning-soft: rgba(245, 158, 11, 0.18);
+    --ui-danger: #f87171;
+    --ui-danger-soft: rgba(239, 68, 68, 0.18);
+  }
+}

@@ -36,11 +36,11 @@ export default function RootLayout({ children }: RootLayoutProps) {
     };
 
     return (
-        <div className="flex w-full overflow-auto text-white/90 font-sans selection:bg-accent selection:text-white">
+        <div className="flex w-full overflow-auto text-fg font-sans selection:bg-accent selection:text-on-accent">
             {/* Sidebar Overlay Backdrop */}
             {isSidebarOpen && (
                 <div
-                    className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity"
+                    className="fixed inset-0 bg-scrim backdrop-blur-xs z-40 transition-opacity"
                     onClick={() => setSidebarOpen(false)}
                 />
             )}
@@ -82,7 +82,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
             >
                 <div className="space-y-6">
                     <div className="space-y-3">
-                        <p className="text-sm text-white/70">
+                        <p className="text-sm text-fg-2">
                             Choose how Shuffle opens on this device.
                         </p>
                         <div className="grid grid-cols-2 gap-3">
@@ -90,8 +90,8 @@ export default function RootLayout({ children }: RootLayoutProps) {
                                 onClick={() => handleSelectShuffleMode("web")}
                                 variant="glass"
                                 className={clsx(
-                                    "w-full justify-center rounded-2xl",
-                                    shuffleOpenMode === "web" && "bg-white/20 border-white/30"
+                                    "w-full justify-center rounded-ui-lg",
+                                    shuffleOpenMode === "web" && "bg-fill-active border-line-strong"
                                 )}
                             >
                                 Web
@@ -100,8 +100,8 @@ export default function RootLayout({ children }: RootLayoutProps) {
                                 onClick={() => handleSelectShuffleMode("app")}
                                 variant="glass"
                                 className={clsx(
-                                    "w-full justify-center rounded-2xl",
-                                    shuffleOpenMode === "app" && "bg-white/20 border-white/30"
+                                    "w-full justify-center rounded-ui-lg",
+                                    shuffleOpenMode === "app" && "bg-fill-active border-line-strong"
                                 )}
                             >
                                 App
@@ -109,8 +109,8 @@ export default function RootLayout({ children }: RootLayoutProps) {
                         </div>
                     </div>
 
-                    <div className="space-y-3 pt-4 border-t border-white/10">
-                        <p className="text-sm text-white/70">
+                    <div className="space-y-3 pt-4 border-t border-line">
+                        <p className="text-sm text-fg-2">
                             Mixed Mode (Images + Videos)
                         </p>
                         <div className="grid grid-cols-2 gap-3">
@@ -120,8 +120,8 @@ export default function RootLayout({ children }: RootLayoutProps) {
                                 data-testid="mixed-mode-mixed"
                                 aria-pressed={isMixedMode}
                                 className={clsx(
-                                    "w-full justify-center rounded-2xl",
-                                    isMixedMode && "bg-white/20 border-white/30"
+                                    "w-full justify-center rounded-ui-lg",
+                                    isMixedMode && "bg-fill-active border-line-strong"
                                 )}
                             >
                                 混合
@@ -132,8 +132,8 @@ export default function RootLayout({ children }: RootLayoutProps) {
                                 data-testid="mixed-mode-isolated"
                                 aria-pressed={!isMixedMode}
                                 className={clsx(
-                                    "w-full justify-center rounded-2xl",
-                                    !isMixedMode && "bg-white/20 border-white/30"
+                                    "w-full justify-center rounded-ui-lg",
+                                    !isMixedMode && "bg-fill-active border-line-strong"
                                 )}
                             >
                                 隔离
