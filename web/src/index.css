@@ -85,6 +85,12 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+html,
+body {
+  /* 关闭根滚动容器的 overscroll：禁用浏览器下拉刷新与橡皮筋回弹 */
+  overscroll-behavior-y: none;
+}
+
 body {
   margin: 0;
   padding: 0;
