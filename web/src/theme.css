@@ -17,11 +17,8 @@
     'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
 
   /* Page */
-  --ui-bg: #eef1f7;
-  --ui-bg-image:
-    radial-gradient(at 0% 0%, hsla(220, 60%, 97%, 1) 0, transparent 50%),
-    radial-gradient(at 50% 0%, hsla(225, 70%, 90%, 1) 0, transparent 50%),
-    radial-gradient(at 100% 0%, hsla(339, 70%, 93%, 1) 0, transparent 50%);
+  --ui-bg: #f5f6f8;
+  --ui-bg-image: none;
 
   /* Text */
   --ui-text: rgba(15, 23, 42, 0.9);
@@ -34,8 +31,8 @@
   --ui-blur: blur(20px) saturate(180%);
   --ui-border: rgba(15, 23, 42, 0.08);
   --ui-border-strong: rgba(15, 23, 42, 0.16);
-  --ui-shadow: 0 8px 32px rgba(15, 23, 42, 0.1);
-  --ui-shadow-lg: 0 20px 48px rgba(15, 23, 42, 0.16);
+  --ui-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  --ui-shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.12);
   --ui-scrim: rgba(15, 23, 42, 0.25);
 
   /* Control fills (inputs, ghost buttons, chips, segmented tracks) */
@@ -86,22 +83,19 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ui-bg: #0f172a;
-    --ui-bg-image:
-      radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
-      radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 1) 0, transparent 50%),
-      radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 1) 0, transparent 50%);
+    --ui-bg: #1c1c1f;
+    --ui-bg-image: none;
 
     --ui-text: rgba(255, 255, 255, 0.9);
     --ui-text-2: rgba(255, 255, 255, 0.6);
     --ui-text-3: rgba(255, 255, 255, 0.4);
 
-    --ui-surface: rgba(30, 32, 40, 0.6);
-    --ui-surface-strong: rgba(24, 26, 34, 0.88);
+    --ui-surface: rgba(255, 255, 255, 0.05);
+    --ui-surface-strong: rgba(44, 44, 48, 0.92);
     --ui-border: rgba(255, 255, 255, 0.1);
     --ui-border-strong: rgba(255, 255, 255, 0.2);
-    --ui-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-    --ui-shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.5);
+    --ui-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    --ui-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.35);
     --ui-scrim: rgba(0, 0, 0, 0.5);
 
     --ui-fill: rgba(255, 255, 255, 0.08);
