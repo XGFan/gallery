@@ -1,154 +1,59 @@
 # AGENTS.md (gallery)
 
-> 供自动化/Agent 编码工具使用。本文件基于当前仓库配置与源码风格整理。
-
-## 目录结构概览
-
-- `web/`：Vite + React + TypeScript 前端
-- `app/`：Go 后端入口（`app/main.go`）
-- `tiny-viewer/`：Swift (macOS/iOS) 客户端
+个人媒体库：Go 后端（Gin）+ React SPA（`web/`，Vite/TypeScript）+ Swift 客户端（`GalleryApp/`、`tiny-viewer/`）。前端经 `//go:embed web/dist` 打进 Go 二进制。领域词汇以 `CONTEXT.md` 为准，设计决策见 `docs/adr/`。
 
 ## 构建 / 运行 / Lint / 测试
 
-### 前端（web/）
+### 后端（Go，仓库根目录）
 
-工作目录：`web/`
+- `go run ./app`：本地启动，默认端口 `8000`（`gallery.yaml` 的 `port` 可改），配置文件 `gallery.yaml` 不入库。
+- `go test ./...`；单测：`go test -run TestName ./core -v`。
+- 生产构建（同 `Dockerfile`）：`GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -tags vips -o gallery ./app`。
+- `web/dist` 不入库，不存在时 Go 编译失败（`pattern web/dist: no matching files found`），需先在 `web/` 执行 `npm run build`。
+- 缩略图实现由 build tag 决定：`vips` 用 govips/libvips，`nothumb` 不生成缩略图，默认纯 Go。
+- Swagger：`swag fmt && swag init -g gallery.go -o swagger`（注解在 `gallery.go`；不带 `-g` 会因根目录无 `main.go` 而失败）。
 
-- 开发服务器：
-  - `npm run dev`（实际执行：`vite --host`）
-- 构建：
-  - `npm run build`（实际执行：`tsc && vite build`）
-- Lint：
-  - `npm run lint`（`eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0`）
-- 预览构建：
-  - `npm run preview`
-- 单元测试（Vitest）：
-  - `npm run test`（跑一次：`vitest run`）
-  - `npm run test:watch`（watch 模式：`vitest`）
-  - 测试文件示例：`web/src/utils.test.ts`
-- E2E（Playwright）：
-  - `npm run test:e2e`（Chromium + WebKit × 桌面 1440×900 / 移动 430×932，四个 project：`chromium-desktop`、`chromium-mobile`、`webkit-desktop`、`webkit-mobile`）
-  - 视频支持验证：`npm run test:e2e -- web/tests/media-video.spec.ts`
+### 前端（`web/`，Node 24，见 `.nvmrc`）
 
-#### 运行单个测试（前端）
+- `npm run dev`：Vite 端口 `3000`，按 `config/proxy.local.json` 将 `/api`、`/file`、`/thumbnail`、`/video`、`/poster` 代理到 `127.0.0.1:8000`；`npm run dev:remote` 改用 `proxy.remote.json` 代理到线上。
+- `npm run build`：`tsc && vite build`，输出 `web/dist/`。
+- `npm run lint`：ESLint，`--max-warnings 0`，必须零警告。
+- `npm run test`：Vitest 跑一次；`npm run test:watch` 为 watch 模式。
+  - 单文件：`npm run test -- src/utils.test.ts`；按名称：`npm run test -- -t "maps media videos"`。
+- `npm run test:e2e`：Playwright，自动以 `5173` 端口启动 dev server；Chromium + WebKit × 桌面 1440×900 / 移动 430×932，四个 project：`chromium-desktop`、`chromium-mobile`、`webkit-desktop`、`webkit-mobile`。
+  - 单 spec：`npm run test:e2e -- tests/media-video.spec.ts`；按名称：`npm run test:e2e -- --grep "renders video card"`。
 
-- 运行单个 Vitest 文件：
-  - `npm run test -- src/utils.test.ts`
-- 运行单个 Vitest 用例（按名称匹配）：
-  - `npm run test -- -t "maps media videos"`
-- 运行单个 Playwright spec：
-  - `npm run test:e2e -- web/tests/media-video.spec.ts`
-- 运行单个 Playwright 用例（按名称匹配）：
-  - `npm run test:e2e -- --grep "renders video card"`
+### GalleryApp（iOS / macOS 原生客户端）
 
-### 后端（Go，根目录 / app/）
+构建、测试命令与网络前提见 `GalleryApp/README.md`。macOS E2E（`GalleryAppUITests` 配合 `-destination 'platform=macOS'`）会接管真实鼠标与当前桌面空间，未设置 `TEST_RUNNER_GALLERY_MACOS_E2E=1` 时自动跳过，且只能在用户明确确认后触发；日常 E2E 使用 iOS 模拟器。
 
-工作目录：仓库根
+### tiny-viewer（Swift，`tiny-viewer/`）
 
-- Docker 构建使用：
-  - `GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -tags vips -o gallery .`
-  - 来源：`Dockerfile`（`/app` 目录内执行）
-- 运行（开发）：
-  - 入口：`app/main.go`，可通过 `go run ./app` 本地启动（如需）
+- `swift build && swift run tiny-viewer Weibo`（参数为分类名）；`DEBUG=1` 开启调试输出。
+- `swift test`：运行 `TinyViewerCoreTests`。
+- 打包 macOS：`./scripts/package-macos.sh`，输出 `dist/TinyViewer.app`。
+- iOS：`open TinyViewerApp/TinyViewerApp.xcodeproj` 后在 Xcode 中构建运行。
 
-> 说明：未发现 Go 测试文件（`*_test.go`）。
+## CI/CD
 
-### tiny-viewer（Swift）
+- `.woodpecker.yaml`（master 的 push / manual）：构建 Docker 镜像，flux-bump 更新 infra 仓库镜像 tag，由 Flux 部署。
+- `.github/workflows/ci.yml`（master push，忽略 `**.md` 等路径）构建推送镜像，`cd.yml` 在其成功后 `kubectl set image` 部署。
+- 不想触发 CI 时在 commit message 中加 `[skip ci]`。
 
-工作目录：`tiny-viewer/`
+## 架构要点
 
-- 构建并运行（macOS CLI）：
-  - `swift build && swift run tiny-viewer Weibo`
-- Debug 运行：
-  - `DEBUG=1 swift run tiny-viewer Weibo`
-- 打包（macOS）：
-  - `./scripts/package-macos.sh`（输出：`dist/TinyViewer.app`）
-- iOS（Xcode）：
-  - `open TinyViewerApp/TinyViewerApp.xcodeproj`，通过 Xcode `⌘R` 构建运行
+- 路由全部在 `gallery.go` 的 `Init()` 注册：`/api/{tree,explore,media,image,album,random,tag}`、`/file/`、`/thumbnail/`、`/video/`、`/poster/`、`/swagger/`，其余走 SPA fallback。
+- `/poster/`：先找物理 `cover.{jpg,jpeg,png,webp}` 与已缓存封面（`X-Poster-Status: ready`），否则入队异步生成并返回占位 SVG（`X-Poster-Status: pending`）。封面由 ffmpeg 生成：先用 `thumbnail=100` 滤镜，失败再按时长偏移重试。
+- 扫描：`core/scanner.go` 为四级并发流水线 Discovery(8) → SizeProbe(4) → MetaEnricher(4) → Mutator(4)；节点以 `LastScanID` 标记本轮扫描，未被标记的节点被清理。内存树在对外服务期间被原地修改（见 ADR 0009），读路径必须加锁。
+- 扫描生命周期：启动时 `warmUp()` 先从缓存恢复再触发扫描；任意 API 调用经 `Trigger()` 在距上次扫描超过 300 秒时触发重扫。
+- 缓存：`CacheManager` 在 `.cache/` 下持久化 `.img.json`、`.img-size.json`、`.img-tag.json`、`.img-caption.json`、`.video-meta.json`，用 `reflect.DeepEqual` 比对跳过无变化的写入。
+- 配置 `config/conf.go`：`Resource.Base`（媒体根目录）、`Exclude`、`ForceThumbnail`、`VirtualPath`（把多个物理目录聚合成虚拟文件夹，其下媒体路径不以虚拟文件夹路径为前缀）、`TagBlacklist`。
 
-> 说明：`Package.swift` 未定义 `testTarget`，暂无 Swift 测试目标。
+## 代码风格
 
-## CI/CD 说明
-
-- `.woodpecker.yaml` 定义 Woodpecker 流水线：构建 Docker 镜像，再由 flux-bump 更新 infra 仓库的镜像 tag，Flux 完成部署。
-- 主要镜像构建入口为 `Dockerfile`。
-
-## 代码风格与规范（当前仓库观察）
-
-### 通用原则
-
-- 本仓库未统一 Prettier/SwiftLint 配置：**不要强行全局格式化**。
-- 同一文件内风格不一时，**优先保持当前文件已有风格**（引号、分号、缩进、空行）。
-- 避免“顺手重排/重构”跨文件变更。
-
-### TypeScript / React（web/）
-
-#### ESLint（`web/eslint.config.js`）
-
-- `eslint:recommended`
-- `@typescript-eslint/recommended`
-- `react-hooks/recommended`
-- `react-refresh/only-export-components`：`warn`（允许常量导出）
-- Lint 需 **零警告**：`--max-warnings 0`
-
-#### TypeScript（`web/tsconfig.json`）
-
-- `strict: true`
-- `noUnusedLocals: true`
-- `noUnusedParameters: true`
-- `moduleResolution: bundler`
-- `jsx: react-jsx`
-
-#### 命名与结构
-
-- React 组件：`PascalCase`（如 `Viewer`, `TopBar`）
-- 函数/变量：`camelCase`
-- 常量：`UPPER_SNAKE_CASE`（如 `DEFAULT_PAGE_SIZE`）
-- Types/Interfaces：`PascalCase`
-- 文件名：组件多为 `PascalCase.tsx`；工具/模型使用 `camelCase.ts`
-
-#### import / 格式
-
-- 类型导入使用 `import type`（见 `web/src/utils.ts`）。
-- 同仓库存在单双引号与分号混用（见 `web/src/App.tsx` 与 `web/src/utils.ts`）。
-- 不存在统一的 import 排序规则：新增 import 时跟随当前文件顺序。
-- 缩进有 2 或 4 空格混用：以当前文件为准。
-
-#### 错误处理与日志
-
-- 存在 `console.log` 调试输出（见 `web/src/utils.ts`, `web/src/Viewer.tsx`）。
-- 新增日志保持克制，可读即可；不要新增冗长日志。
-- 避免引入 `any` 或忽略类型错误（不要新增 `as any` / `@ts-ignore`）。
-
-### Go 后端
-
-- 代码由 `gofmt` 控制缩进（Tab）。
-- 导入分组：标准库 / 三方 / 本地（见 `gallery.go`）。
-- 错误处理：常用 `if err != nil` 并用 `log.Printf` 记录（见 `thumbnail/libvips.go`）。
-- 可见 `_ =` 忽略错误的用法（如 `storage.SafetyCreateDirectoryByFileName`），新增时谨慎。
-
-### Swift（tiny-viewer）
-
-- 缩进使用 4 空格；类型与文件名多为 `PascalCase`。
-- SwiftUI 组件为 `struct` 或 `class`，属性/方法 `camelCase`。
-- 并发模式：`async throws` + `do/catch`（见 `NetworkManager.swift`, `GalleryViewModel.swift`）。
-- 自定义错误实现 `LocalizedError`（见 `NetworkManager.swift`）。
-- 依赖管理：SwiftPM（`Package.swift`）。
-
-## 运行环境提示
-
-- 前端 Vite proxy 指向：
-  - `/api`, `/file`, `/thumbnail`, `/video`, `/poster` → `http://127.0.0.1:8000/`
-  - 见 `web/vite.config.ts`
-
-## Cursor / Copilot 规则
-
-- 未找到 `.cursor/rules/` 或 `.cursorrules`
-- 未找到 `.github/copilot-instructions.md`
-
-## 约束与建议（Agent 执行）
-
-- 更改命令前先确认工作目录（`web/`、`tiny-viewer/`、根目录）。
-- 只在用户明确要求时提交/修改大范围格式。
-- 保持改动小而精准，避免跨文件“顺手重构”。
-- 测试存在时优先只跑受影响的单测/单个 spec。
+- 未统一 Prettier/SwiftLint 配置：不要全局格式化，引号、分号、缩进、import 顺序均以当前文件为准。
+- TypeScript：`strict`、`noUnusedLocals`、`noUnusedParameters`；类型导入用 `import type`；不要新增 `any`、`as any`、`@ts-ignore`。
+- 命名：React 组件 `PascalCase`（文件 `PascalCase.tsx`），函数/变量 `camelCase`，常量 `UPPER_SNAKE_CASE`，工具/模型文件 `camelCase.ts`。
+- 日志保持克制，不新增冗长日志。
+- Go：`gofmt`；导入分组为标准库 / 三方 / 本地；`if err != nil` 后用 `log.Printf` 记录；仓库中存在 `_ =` 忽略错误的写法，新增时谨慎。
+- Swift：4 空格缩进；异步用 `async throws` + `do/catch`；自定义错误实现 `LocalizedError`。
