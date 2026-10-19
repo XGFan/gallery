@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -14,17 +13,6 @@ func StringVar(key string, defaultValue string) string {
 		return env
 	} else {
 		return defaultValue
-	}
-}
-
-func IntVar(key string, defaultValue int) int {
-	stringVar := StringVar(key, fmt.Sprintf("%d", defaultValue))
-	parsedValue, err := strconv.Atoi(stringVar)
-	if err != nil {
-		log.Printf("Env %s error :%s\n", key, stringVar)
-		return defaultValue
-	} else {
-		return parsedValue
 	}
 }
 

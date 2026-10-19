@@ -1,8 +1,6 @@
 package storage
 
 import (
-	"bytes"
-	"fmt"
 	"github.com/XGFan/go-utils"
 	"io"
 	"net/http"
@@ -74,43 +72,4 @@ func IsNormalFile(name string) bool {
 	default:
 		return true
 	}
-}
-
-func NormPath(path string) string {
-	path = strings.Replace(path, `/`, `\`, -1)
-	for strings.HasPrefix(path, `.\`) {
-		path = path[2:]
-	}
-	if path == "." {
-		return ""
-	}
-	return path
-}
-
-func GetOrCreateFile(baseFs Storage, dbFile string) (string, error) {
-	if !baseFs.Exist(dbFile) {
-		_, err := baseFs.Create(dbFile)
-		if err != nil {
-			return "", fmt.Errorf("create %s file fail: %w", dbFile, err)
-		}
-	}
-	return baseFs.Join(baseFs.GetPath(), dbFile), nil
-}
-
-type ProxyFs struct {
-	Storage
-	Transform func(origin []byte) ([]byte, error)
-}
-
-func (pfs ProxyFs) Save(name string, reader io.ReadCloser) error {
-	defer utils.CloseSilent(reader)
-	all, err := io.ReadAll(reader)
-	if err != nil {
-		return err
-	}
-	modified, err := pfs.Transform(all)
-	if err != nil {
-		return err
-	}
-	return pfs.Storage.Save(name, io.NopCloser(bytes.NewReader(modified)))
 }

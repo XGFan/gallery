@@ -4,8 +4,6 @@ import (
 	"errors"
 	"math/rand"
 	"sync"
-
-	utils "github.com/XGFan/go-utils"
 )
 
 // Pipeline Data Structures
@@ -251,69 +249,6 @@ func (dn *TraverseNode) Locate(path string) *TraverseNode {
 	return current
 }
 
-// Load applies size cache to all images
-func (dn *TraverseNode) Load(sizeCache map[string]Size) {
-	// Under the write lock: this rewrites elements in place while HTTP handlers
-	// may be reading the same slices. The recursion below stays outside it —
-	// holding a parent's lock across a subtree walk would block the scanner
-	// from inserting anywhere beneath it.
-	dn.mu.Lock()
-	for i := range dn.Images {
-		if size, ok := sizeCache[dn.Images[i].Path]; ok {
-			dn.Images[i].Size = size
-		}
-	}
-	for i := range dn.Videos {
-		if size, ok := sizeCache[dn.Videos[i].Path]; ok {
-			dn.Videos[i].Size = size
-		}
-	}
-	dn.mu.Unlock()
-	for _, sub := range dn.subdirs() {
-		sub.Load(sizeCache)
-	}
-}
-
-// LoadTagsAndCaptions applies tag and caption caches
-func (dn *TraverseNode) LoadTagsAndCaptions(tagCache map[string][]TagInfo, captionCache map[string]string, blacklist utils.Set[string]) {
-	dn.mu.Lock()
-	for i := range dn.Images {
-		path := dn.Images[i].Path
-		if tags, ok := tagCache[path]; ok {
-			filtered := make([]TagInfo, 0, len(tags))
-			for _, tag := range tags {
-				if tag.Value >= TagMinValue && !blacklist.Contains(tag.Tag) {
-					filtered = append(filtered, tag)
-				}
-			}
-			dn.Images[i].Tags = filtered
-		}
-		if caption, ok := captionCache[path]; ok {
-			dn.Images[i].Caption = caption
-		}
-	}
-	for i := range dn.Videos {
-		path := dn.Videos[i].Path
-		if tags, ok := tagCache[path]; ok {
-			filtered := make([]TagInfo, 0, len(tags))
-			for _, tag := range tags {
-				if tag.Value >= TagMinValue && !blacklist.Contains(tag.Tag) {
-					filtered = append(filtered, tag)
-				}
-			}
-			dn.Videos[i].Tags = filtered
-		}
-		if caption, ok := captionCache[path]; ok {
-			dn.Videos[i].Caption = caption
-		}
-	}
-	dn.mu.Unlock()
-
-	for _, sub := range dn.subdirs() {
-		sub.LoadTagsAndCaptions(tagCache, captionCache, blacklist)
-	}
-}
-
 // Dump exports all image sizes to a map
 func (dn *TraverseNode) Dump() map[string]Size {
 	result := make(map[string]Size)
@@ -414,42 +349,6 @@ func (dn *TraverseNode) CleanupRecursively(currentScanID int64) int {
 	dn.Videos = validVideos
 
 	return deletedCount
-}
-
-// ToStructureOnly creates a copy with only structural info
-func (dn *TraverseNode) ToStructureOnly() *TraverseNode {
-	sourceImages := dn.imageSlice()
-	images := make([]ImageNode, len(sourceImages))
-	for i, img := range sourceImages {
-		images[i] = ImageNode{
-			Node: Node{Name: img.Name, Path: img.Path},
-			Size: EmptySize,
-		}
-	}
-
-	sourceVideos := dn.videoSlice()
-	videos := make([]VideoNode, len(sourceVideos))
-	for i, vid := range sourceVideos {
-		videos[i] = VideoNode{
-			Node: Node{Name: vid.Name, Path: vid.Path},
-			Size: EmptySize,
-		}
-	}
-
-	dirs := make(map[string]*TraverseNode)
-	for _, entry := range dn.namedSubdirs() {
-		name, sub := entry.Name, entry.Node
-		dirs[name] = sub.ToStructureOnly()
-	}
-
-	return &TraverseNode{
-		Node:        Node{Name: dn.Name, Path: dn.Path},
-		Images:      images,
-		Videos:      videos,
-		Others:      dn.otherSlice(),
-		Directories: dirs,
-		CoverIndex:  dn.coverIndex(),
-	}
 }
 
 // Flatten converts the tree into a flat list of ScanItems
@@ -781,9 +680,4 @@ func (dn *TraverseNode) HasImages() bool {
 // HasVideos checks if directory has videos
 func (dn *TraverseNode) HasVideos() bool {
 	return len(dn.videoSlice()) > 0
-}
-
-// HasSubDirectories checks if directory has subdirectories
-func (dn *TraverseNode) HasSubDirectories() bool {
-	return dn.subdirCount() > 0
 }

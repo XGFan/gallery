@@ -38,7 +38,6 @@ type Gallery struct {
 	lastScan int64
 
 	scanner       *core.Scanner
-	originFs      storage.Storage
 	rescanTrigger chan struct{}
 }
 

@@ -43,7 +43,7 @@ fatal error: concurrent map iteration and map write
 `TraverseNode.mu` 本来就是 `sync.RWMutex`，只是读侧从来没用过它。现在所有读路径统一走加锁
 访问器：`subdirs` / `namedSubdirs` / `subdirCount` 在读锁下把子节点快照成切片；
 `imageSlice` / `videoSlice` / `otherSlice` / `coverIndex` 在读锁下取值——切片只拷 3 字的头，
-不拷元素。写路径（`Load`、`LoadTagsAndCaptions`、`CleanupRecursively`）取写锁。
+不拷元素。写路径（如 `CleanupRecursively`）取写锁。
 
 锁只圈住元素循环，**递归留在锁外**：持着父节点的锁走完整棵子树，会把扫描器挡在整片子树外面。
 
