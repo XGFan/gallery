@@ -46,7 +46,7 @@
 - `/poster/`：先找物理 `cover.{jpg,jpeg,png,webp}` 与已缓存封面（`X-Poster-Status: ready`），否则入队异步生成并返回占位 SVG（`X-Poster-Status: pending`）。封面由 ffmpeg 生成：先用 `thumbnail=100` 滤镜，失败再按时长偏移重试。
 - 扫描：`core/scanner.go` 为四级并发流水线 Discovery(8) → SizeProbe(4) → MetaEnricher(4) → Mutator(4)；节点以 `LastScanID` 标记本轮扫描，未被标记的节点被清理。内存树在对外服务期间被原地修改（见 ADR 0009），读路径必须加锁。
 - 扫描生命周期：启动时 `warmUp()` 先从缓存恢复再触发扫描；任意 API 调用经 `Trigger()` 在距上次扫描超过 300 秒时触发重扫。
-- 缓存：`CacheManager` 在 `.cache/` 下持久化 `.img.json`、`.img-size.json`、`.img-tag.json`、`.img-caption.json`、`.video-meta.json`，用 `reflect.DeepEqual` 比对跳过无变化的写入。
+- 缓存：`CacheManager` 在 `.cache/` 下持久化 `.img.json`、`.img-size.v2.json`、`.img-tag.json`、`.img-caption.json`、`.video-meta.json`，用 `reflect.DeepEqual` 比对跳过无变化的写入。
 - 配置 `config/conf.go`：`Resource.Base`（媒体根目录）、`Exclude`、`ForceThumbnail`、`VirtualPath`（把多个物理目录聚合成虚拟文件夹，其下媒体路径不以虚拟文件夹路径为前缀）、`TagBlacklist`。
 
 ## 代码风格

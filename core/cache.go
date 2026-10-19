@@ -15,7 +15,9 @@ import (
 )
 
 // Cache file names
-const ImgSizeCache = ".img-size.json"
+// v2: sizes are display sizes (EXIF orientation applied); renamed so sizes cached
+// without orientation are probed again.
+const ImgSizeCache = ".img-size.v2.json"
 const ImgTagCache = ".img-tag.json"
 const ImgCaptionCache = ".img-caption.json"
 const ImgStructureCache = ".img.json"

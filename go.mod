@@ -12,6 +12,7 @@ require (
 )
 
 require (
+	github.com/XGFan/fastimage v0.1.0
 	github.com/XGFan/go-utils v0.0.0-20240318151539-025ddda1ce33
 	github.com/davidbyttow/govips/v2 v2.18.0
 	github.com/swaggo/swag v1.16.6

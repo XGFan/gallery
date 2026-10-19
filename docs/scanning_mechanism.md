@@ -22,7 +22,7 @@
 
 2.  **Pipeline Processing (管道处理)**:
     - **SizeProbe (尺寸探测)**: 
-        - **图片**: 过滤有效图片并解析尺寸（从缓存读取或解码文件头）。
+        - **图片**: 过滤有效图片并解析尺寸（从缓存读取，或用 `github.com/XGFan/fastimage` 只读文件头；按 EXIF 方向换算为显示尺寸）。
         - **视频**: 过滤有效视频并提取元数据（时长、宽、高）。
             - **元数据刷新**: 优先从 `.video-meta.json` 缓存加载；若缓存缺失或文件已变更（通过 `mtime` 和 `size` 判定），则调用 `ffprobe` 解析并更新缓存。
             - **封面异步生成**: 在“缺封面”或“视频变更”时，系统会将该视频入队到 `PosterQueue`。生成过程采用 **两阶段重试策略 (Two-pass Strategy)** 提高封面质量与成功率：
@@ -81,7 +81,7 @@ Mutator 是管道的终点，采用 4 个并发工作线程 (`workerSize=4`) 将
 ### Persistence (持久化)
 - `Scanner.Persist` 将树状态转储为 JSON 缓存文件：
     - `.img.json`: 目录树结构快照。
-    - `.img-size.json`: 图片尺寸缓存。
+    - `.img-size.v2.json`: 图片尺寸缓存（按 EXIF 方向换算后的显示尺寸）。
     - `.video-meta.json`: 视频元数据（宽高、时长、mtime、size）。
     - `.img-tag.json` / `.img-caption.json`: AI 标注的标签与说明。
 

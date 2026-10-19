@@ -1,5 +1,7 @@
 github.com/KyleBanks/depth v1.2.1 h1:5h8fQADFrWtarTdtDudMmGsC7GPbOAu6RVB3ffsVFHc=
 github.com/KyleBanks/depth v1.2.1/go.mod h1:jzSb9d0L43HxTQfT+oSA1EEp2q+ne2uh6XgeJcm8brE=
+github.com/XGFan/fastimage v0.1.0 h1:fbiErDp5d/zH7OiIXDy9Xlnut7ZbW9mvp63/y1bO/aA=
+github.com/XGFan/fastimage v0.1.0/go.mod h1:XQ/opP21Mso0XTHXbzfAEvyil/QpwMbCHvWoPj4Ywes=
 github.com/XGFan/go-utils v0.0.0-20240318151539-025ddda1ce33 h1:r8c8n8gpbkJlRnNVoxLE7joej21/lc7CoDRexTA0sEg=
 github.com/XGFan/go-utils v0.0.0-20240318151539-025ddda1ce33/go.mod h1:hRhnBAxtHS7EDyBc0zLywkLoBp0U4zAFqVVlAmqDofQ=
 github.com/bytedance/gopkg v0.1.4 h1:oZnQwnX82KAIWb7033bEwtxvTqXcYMxDBaQxo5JJHWM=

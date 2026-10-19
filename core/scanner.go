@@ -1,12 +1,12 @@
 package core
 
 import (
-	"image"
 	"log"
 	"path"
 	"sync"
 	"time"
 
+	"github.com/XGFan/fastimage"
 	utils "github.com/XGFan/go-utils"
 
 	"gallery/common/misc"
@@ -218,9 +218,8 @@ func (s *Scanner) runSizeProbe(in <-chan ScanItem, workerSize int) (out chan Sca
 						width, height = size.Width, size.Height
 					} else {
 						if f, err := s.OriginFs.Open(item.Path); err == nil {
-							if cfg, _, err := image.DecodeConfig(f); err == nil {
-								width, height = cfg.Width, cfg.Height
-							}
+							w, h := fastimage.GetInfoReader(f).DisplaySize()
+							width, height = int(w), int(h)
 							f.Close()
 						}
 					}
