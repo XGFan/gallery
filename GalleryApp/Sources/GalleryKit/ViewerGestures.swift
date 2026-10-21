@@ -132,12 +132,13 @@ enum AutoAdvance {
     }
 }
 
-/// Swiping past the last item lands on the first.
+/// Swiping past the last item lands on the first, and back past the first
+/// lands on the last.
 ///
-/// The pager carries one extra page after the last that repeats the first item,
-/// and jumps onto the real first page once the swipe settles — so the swipe
-/// itself is an ordinary one-page move instead of a sweep back across the whole
-/// sequence.
+/// The pager carries an extra page at each end — after the last, a copy of the
+/// first; before the first, a copy of the last — and jumps onto the real page
+/// once the swipe settles. The swipe itself is an ordinary one-page move
+/// instead of a sweep across the whole sequence.
 enum ViewerLoop {
     /// Only a sequence that is all there wraps. Past the loaded end of a paged
     /// folder lies its next page, not its first item; and a `random` stream has
@@ -147,14 +148,24 @@ enum ViewerLoop {
         return count >= (totalCount ?? count)
     }
 
-    static func pageCount(count: Int, wraps: Bool) -> Int {
-        wraps ? count + 1 : count
+    /// The pager's pages. Item `i` is page `i`; the extra pages are `-1` and
+    /// `count`.
+    static func pages(count: Int, wraps: Bool) -> Range<Int> {
+        wraps ? -1..<(count + 1) : 0..<count
     }
 
-    /// The item a page shows. The extra page is `count` and shows item 0.
+    /// The item a page shows.
     static func itemIndex(page: Int, count: Int, wraps: Bool) -> Int? {
         if wraps, page == count { return 0 }
+        if wraps, page == -1 { return count - 1 }
         return (0..<count).contains(page) ? page : nil
+    }
+
+    /// The real page to jump to once the pager comes to rest on an extra one;
+    /// nil when it is already on a real page.
+    static func settledPage(page: Int, count: Int, wraps: Bool) -> Int? {
+        guard wraps, page == -1 || page == count else { return nil }
+        return itemIndex(page: page, count: count, wraps: wraps)
     }
 }
 

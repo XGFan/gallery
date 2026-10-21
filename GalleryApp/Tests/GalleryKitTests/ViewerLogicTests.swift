@@ -168,19 +168,29 @@ final class ViewerLoopTests: XCTestCase {
                        "a single item has nowhere to wrap to")
     }
 
-    /// The extra page after the last shows the first item, and is the only
-    /// page that does not map to itself.
-    func testTheExtraPageShowsTheFirstItem() {
-        XCTAssertEqual(ViewerLoop.pageCount(count: 3, wraps: true), 4)
+    /// The extra page after the last shows the first item, the one before the
+    /// first shows the last; every other page maps to itself.
+    func testTheExtraPagesShowTheOtherEnd() {
+        XCTAssertEqual(ViewerLoop.pages(count: 3, wraps: true), -1..<4)
         XCTAssertEqual(ViewerLoop.itemIndex(page: 3, count: 3, wraps: true), 0)
-        XCTAssertEqual(ViewerLoop.itemIndex(page: 2, count: 3, wraps: true), 2)
-        XCTAssertEqual(ViewerLoop.itemIndex(page: 0, count: 3, wraps: true), 0)
+        XCTAssertEqual(ViewerLoop.itemIndex(page: -1, count: 3, wraps: true), 2)
+        XCTAssertEqual(ViewerLoop.itemIndex(page: 1, count: 3, wraps: true), 1)
     }
 
-    func testWithoutWrappingThereIsNoExtraPage() {
-        XCTAssertEqual(ViewerLoop.pageCount(count: 3, wraps: false), 3)
+    /// Coming to rest on an extra page jumps to the real page it copies, and
+    /// only then — a real page stays put.
+    func testSettlingLeavesOnlyTheExtraPages() {
+        XCTAssertEqual(ViewerLoop.settledPage(page: 3, count: 3, wraps: true), 0)
+        XCTAssertEqual(ViewerLoop.settledPage(page: -1, count: 3, wraps: true), 2)
+        XCTAssertNil(ViewerLoop.settledPage(page: 0, count: 3, wraps: true))
+        XCTAssertNil(ViewerLoop.settledPage(page: 2, count: 3, wraps: true))
+    }
+
+    func testWithoutWrappingThereAreNoExtraPages() {
+        XCTAssertEqual(ViewerLoop.pages(count: 3, wraps: false), 0..<3)
         XCTAssertNil(ViewerLoop.itemIndex(page: 3, count: 3, wraps: false))
-        XCTAssertNil(ViewerLoop.itemIndex(page: -1, count: 3, wraps: true))
+        XCTAssertNil(ViewerLoop.itemIndex(page: -1, count: 3, wraps: false))
+        XCTAssertNil(ViewerLoop.settledPage(page: 3, count: 3, wraps: false))
     }
 }
 

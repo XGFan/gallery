@@ -97,6 +97,22 @@ final class GalleryFlowUITests: XCTestCase {
         #endif
     }
 
+    /// Closes the full-screen player the way a user would: a downward swipe on
+    /// iOS, which has no close button, and the button on macOS, which has no
+    /// swipe.
+    private func closeViewer() {
+        #if os(macOS)
+        control("viewer-close").press()
+        #else
+        swipeTarget.swipeDown()
+        #endif
+    }
+
+    /// One page back. iOS only, like everything that pages the player.
+    private func pageBack() {
+        swipeTarget.swipeRight()
+    }
+
     /// A drag from the very left edge — the interactive pop gesture, not a
     /// content swipe. `swipeRight()` starts in the middle of the screen and
     /// never reaches the edge recogniser.
@@ -535,9 +551,8 @@ final class GalleryFlowUITests: XCTestCase {
         require(randomButton, "the random button is missing", timeout: 15)
         randomButton.press()
 
-        let close = control("viewer-close")
-        require(close, "random did not open the player", timeout: 45)
-        close.press()
+        require(control("viewer-pager"), "random did not open the player", timeout: 45)
+        closeViewer()
 
         require(control("random-button"), "closing the player should return to the wall")
         _ = firstFolderCell(timeout: 20)
@@ -563,7 +578,7 @@ final class GalleryFlowUITests: XCTestCase {
         let randomButton = control("random-button")
         require(randomButton, "the random button is missing", timeout: 15)
         randomButton.press()
-        require(control("viewer-close"), "random did not open the player", timeout: 45)
+        require(control("viewer-pager"), "random did not open the player", timeout: 45)
 
         // Comfortably past RandomStream.batchSize (30). A sequence that never
         // grew would simply stop moving at its end.
@@ -573,7 +588,7 @@ final class GalleryFlowUITests: XCTestCase {
 
         XCTAssertEqual(app.state, .runningForeground, "the app died swiping the stream")
         XCTAssertTrue(
-            control("viewer-close").exists,
+            control("viewer-pager").exists,
             "the player closed itself — the stream ran out instead of fetching another batch"
         )
         // The counter is the position with no denominator (docs/adr/0008), and
@@ -612,18 +627,17 @@ final class GalleryFlowUITests: XCTestCase {
 
         firstMediaCell(timeout: 45).press()
 
-        let close = control("viewer-close")
-        require(close, "the player did not open", timeout: 20)
-        close.press()
+        require(control("viewer-pager"), "the player did not open", timeout: 20)
+        closeViewer()
 
         require(control("view-switcher:image"), "closing the player should return to the wall")
     }
 
-    /// Swiping past the last item of a folder lands on the first, and the
-    /// player is then really on the first page — one more swipe goes to the
-    /// second, rather than sticking on the copy of the first that the wrap
-    /// passes through.
-    func testSwipingPastTheLastWrapsToTheFirst() throws {
+    /// Swiping past the last item of a folder lands on the first and back past
+    /// the first lands on the last, and the player is then really on that page —
+    /// one more swipe moves on, rather than sticking on the copy the wrap passes
+    /// through.
+    func testSwipingPastEitherEndWraps() throws {
         #if os(macOS)
         // Same mechanical limit as testRandomStreamKeepsGoingPastTheFirstBatch:
         // nothing found so far pages the macOS viewer from a UI test.
@@ -673,6 +687,17 @@ final class GalleryFlowUITests: XCTestCase {
         waitUntil("the wrap left the player stuck, read '\(text(of: counter))'") {
             text(of: counter) == "2 / \(total)"
         }
+
+        // And back the other way: past the first lands on the last.
+        pageBack()
+        pageBack()
+        waitUntil("swiping back past 1 / \(total) did not wrap to the last, read '\(text(of: counter))'") {
+            text(of: counter) == "\(total) / \(total)"
+        }
+        pageBack()
+        waitUntil("the backward wrap left the player stuck, read '\(text(of: counter))'") {
+            text(of: counter) == "\(total - 1) / \(total)"
+        }
         #endif
     }
 
@@ -706,7 +731,7 @@ final class GalleryFlowUITests: XCTestCase {
         let randomButton = control("random-button")
         require(randomButton, "the random button is missing", timeout: 15)
         randomButton.press()
-        require(control("viewer-close"), "random did not open the player", timeout: 45)
+        require(control("viewer-pager"), "random did not open the player", timeout: 45)
 
         // Swipe along the stream until a video page shows up. The library is
         // ~98.6% photos, but the sampler's per-level split makes videos far more

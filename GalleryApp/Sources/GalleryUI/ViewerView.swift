@@ -134,9 +134,10 @@ struct ViewerView: View {
     }
 
     private var pager: some View {
+        ScrollViewReader { proxy in
         ScrollView(.horizontal) {
             LazyHStack(spacing: 0) {
-                ForEach(0..<ViewerLoop.pageCount(count: items.count, wraps: wraps), id: \.self) { index in
+                ForEach(ViewerLoop.pages(count: items.count, wraps: wraps), id: \.self) { index in
                     page(for: items[ViewerLoop.itemIndex(page: index, count: items.count, wraps: wraps) ?? 0], at: index)
                         .containerRelativeFrame(.horizontal)
                         .id(index)
@@ -146,21 +147,31 @@ struct ViewerView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentPosition)
-        .modifier(OnScrollIdle(action: settleLoop))
         .scrollIndicators(.hidden)
         .ignoresSafeArea()
         // On the ScrollView itself, which is a real accessibility element — the
         // same shape as the wall's `masonry-wall`, and unlike a bare container
         // it does not overwrite the identifiers of the pages inside it.
         .accessibilityIdentifier("viewer-pager")
+        .modifier(OnScrollIdle(action: settleLoop))
+        // Wrapping turns on when a paged folder's last page lands, which puts
+        // a new page in front of everything. Pinning the current page back in
+        // place keeps the picture from sliding over to its neighbour.
+        .onChange(of: wraps) { _, _ in
+            guard let currentPosition else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { proxy.scrollTo(currentPosition) }
+        }
+        }
     }
 
     @ViewBuilder
     private func page(for item: MediaItem, at index: Int) -> some View {
         if item.isVideo {
-            // Never on the extra page: settling onto the real first page would
+            // Never on an extra page: settling onto the real one would
             // start the same clip over in a second player.
-            VideoPage(url: client.videoURL(item.path), isActive: currentPosition == index && index < items.count)
+            VideoPage(url: client.videoURL(item.path), isActive: currentPosition == index && items.indices.contains(index))
                 .onTapGesture { showsChrome.toggle() }
                 // Lets the E2E tell a video page from an image page without
                 // knowing anything about the library's contents.
@@ -286,18 +297,23 @@ struct ViewerView: View {
         item.isVideo ? client.posterURL(item.path) : client.thumbnailURL(item.path)
     }
 
-    /// Off the extra page after the last and onto the real first one. Without
-    /// animation: both show the same picture, so the jump cannot be seen.
+    /// Off an extra page and onto the real one it copies. Without animation:
+    /// both show the same picture, so the jump cannot be seen.
     private func settleLoop() {
-        guard wraps, currentPosition == items.count else { return }
+        guard let currentPosition,
+              let real = ViewerLoop.settledPage(page: currentPosition, count: items.count, wraps: wraps)
+        else { return }
         var transaction = Transaction()
         transaction.disablesAnimations = true
-        withTransaction(transaction) { currentPosition = 0 }
+        withTransaction(transaction) { self.currentPosition = real }
     }
 
     private var chrome: some View {
         VStack {
             HStack(spacing: 12) {
+                // Desktop only. On iOS a downward swipe closes the player, as in
+                // Photos, and a button for the same thing is just clutter.
+                #if os(macOS)
                 Button(action: close) {
                     Image(systemName: "xmark")
                         .font(.title3.weight(.semibold))
@@ -308,6 +324,7 @@ struct ViewerView: View {
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
                 .accessibilityIdentifier("viewer-close")
+                #endif
 
                 Spacer()
 
