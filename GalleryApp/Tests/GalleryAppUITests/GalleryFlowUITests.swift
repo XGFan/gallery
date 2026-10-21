@@ -619,6 +619,63 @@ final class GalleryFlowUITests: XCTestCase {
         require(control("view-switcher:image"), "closing the player should return to the wall")
     }
 
+    /// Swiping past the last item of a folder lands on the first, and the
+    /// player is then really on the first page — one more swipe goes to the
+    /// second, rather than sticking on the copy of the first that the wrap
+    /// passes through.
+    func testSwipingPastTheLastWrapsToTheFirst() throws {
+        #if os(macOS)
+        // Same mechanical limit as testRandomStreamKeepsGoingPastTheFirstBatch:
+        // nothing found so far pages the macOS viewer from a UI test.
+        throw XCTSkip("no way found to page the macOS viewer from a UI test")
+        #else
+        // The most columns there are, so the bottom of an album is few swipes
+        // away. Opening a cell down there keeps the swipes to the end few too.
+        app.terminate()
+        app.launchArguments = ["-wall.columns", "5"]
+        app.launch()
+
+        firstFolderCell().press()
+        _ = firstMediaCell(timeout: 45)
+        let cells = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "media-cell:"))
+        let window = app.windows.firstMatch.frame
+        var lowest: XCUIElement?
+        var previous = ""
+        // Down until the wall stops moving: every page has loaded by then.
+        for _ in 0..<40 {
+            scrollWall(towardsEnd: true)
+            Thread.sleep(forTimeInterval: 0.8)
+            lowest = cells.allElementsBoundByIndex
+                .filter { window.contains($0.frame) }
+                .max { $0.frame.maxY < $1.frame.maxY }
+            let current = lowest?.identifier ?? ""
+            if current == previous { break }
+            previous = current
+        }
+        guard let lowest else { return XCTFail("no media cell on screen at the bottom of the wall") }
+        lowest.press()
+
+        let counter = control("viewer-counter")
+        require(counter, "the player did not open", timeout: 20)
+        let parts = text(of: counter).split(separator: "/").compactMap {
+            Int($0.trimmingCharacters(in: .whitespaces))
+        }
+        guard parts.count == 2 else { return XCTFail("counter read '\(text(of: counter))'") }
+        let (start, total) = (parts[0], parts[1])
+        XCTAssertLessThanOrEqual(total - start, 30, "opened \(start) / \(total), not near the end")
+
+        for _ in start...total { pageForward() }
+        waitUntil("swiping past \(total) / \(total) did not wrap to 1, read '\(text(of: counter))'") {
+            text(of: counter) == "1 / \(total)"
+        }
+        pageForward()
+        waitUntil("the wrap left the player stuck, read '\(text(of: counter))'") {
+            text(of: counter) == "2 / \(total)"
+        }
+        #endif
+    }
+
     /// Opening a video goes through AVKit's `VideoPlayer`, a completely
     /// different view path from the image viewer — and when it fails it does
     /// not fail politely, it takes the process down. This is the only test that

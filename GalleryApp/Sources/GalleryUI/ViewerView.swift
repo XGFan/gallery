@@ -19,6 +19,13 @@ struct ViewerView: View {
     /// A `random` stream has no end and no total: the counter drops its
     /// denominator rather than inventing one. See docs/adr/0008.
     var unbounded: Bool = false
+    /// Where an item's cell is on the wall, if it is on screen. The player opens
+    /// out of the tapped cell and closes back into the current item's, the way
+    /// Photos does; without one it falls back to the plain cover.
+    var cellFrame: ((MediaItem) -> CGRect?)?
+    /// Told which item is on screen as the user pages, so the wall underneath
+    /// can follow along.
+    var onFocus: ((MediaItem) -> Void)?
 
     /// The player pages by **position**, not by media identity.
     ///
@@ -46,6 +53,11 @@ struct ViewerView: View {
     /// Set once a dismiss is committed. The picture finishes the trajectory the
     /// finger started — smaller and gone — before the cover is torn down.
     @State private var isClosing = false
+    /// The picture flying between the wall and the player, opening or closing.
+    @State private var flight: ViewerFlight?
+    /// The player's own bounds in window coordinates: a cell is only worth
+    /// flying back to while it is actually on screen.
+    @State private var screen: CGRect = .zero
     @State private var autoAdvance: Bool = AutoAdvance.loadEnabled()
     @State private var interval: TimeInterval = AutoAdvance.loadInterval()
 
@@ -55,20 +67,39 @@ struct ViewerView: View {
         isClosing ? 1 : ViewerGesture.dismissProgress(translation: dismissTranslation)
     }
 
+    /// Fades out along with the picture leaving, and in as it arrives.
+    private var backdropOpacity: CGFloat {
+        guard let flight else { return 1 - collapse }
+        return flight.atCell ? 0 : 1 - ViewerGesture.dismissProgress(translation: dismissTranslation)
+    }
+
+    private var wraps: Bool {
+        ViewerLoop.wraps(count: items.count, totalCount: totalCount, unbounded: unbounded)
+    }
+
     var body: some View {
         ZStack {
             // Fades all the way out so the wall shows through — on iOS the
             // cover's own background is cleared for the same reason.
             Color.black
-                .opacity(1 - collapse)
+                .opacity(backdropOpacity)
                 .ignoresSafeArea()
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                    screen = $0
+                }
 
             pager
                 .scaleEffect(1 - collapse * 0.25)
-                .opacity(isClosing ? 0 : 1)
+                // Laid out but unseen during a flight, so the page under the
+                // picture has already loaded by the time it lands.
+                .opacity(isClosing || flight != nil ? 0 : 1)
                 .offset(y: max(dismissTranslation.height, 0))
 
-            if showsChrome, !isDragging, !isClosing {
+            if let flight {
+                ViewerFlightLayer(flight: flight, url: flightURL(for: flight.item))
+            }
+
+            if showsChrome, !isDragging, !isClosing, flight == nil {
                 chrome
             }
         }
@@ -79,10 +110,16 @@ struct ViewerView: View {
             guard items.indices.contains(startIndex) else { return }
             currentPosition = startIndex
             autoAdvance = AutoAdvance.loadEnabled()
+            // Hides the cell only now that the player is up to cover it.
+            onFocus?(items[startIndex])
+            flyOut(items[startIndex])
         }
         .onChange(of: currentPosition) { _, _ in
             currentScale = 1
             requestMoreIfNearEnd()
+            if let index = currentIndex { onFocus?(items[index]) }
+            // Without scroll phases the page is taken as settled on arrival.
+            if #unavailable(iOS 18, macOS 15) { settleLoop() }
         }
         .task(id: autoAdvanceTaskID) { await runAutoAdvance() }
         // The gesture-state reset is the only signal a *cancelled* drag gives.
@@ -99,8 +136,8 @@ struct ViewerView: View {
     private var pager: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                    page(for: item, at: index)
+                ForEach(0..<ViewerLoop.pageCount(count: items.count, wraps: wraps), id: \.self) { index in
+                    page(for: items[ViewerLoop.itemIndex(page: index, count: items.count, wraps: wraps) ?? 0], at: index)
                         .containerRelativeFrame(.horizontal)
                         .id(index)
                 }
@@ -109,6 +146,7 @@ struct ViewerView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentPosition)
+        .modifier(OnScrollIdle(action: settleLoop))
         .scrollIndicators(.hidden)
         .ignoresSafeArea()
         // On the ScrollView itself, which is a real accessibility element — the
@@ -120,7 +158,9 @@ struct ViewerView: View {
     @ViewBuilder
     private func page(for item: MediaItem, at index: Int) -> some View {
         if item.isVideo {
-            VideoPage(url: client.videoURL(item.path), isActive: currentPosition == index)
+            // Never on the extra page: settling onto the real first page would
+            // start the same clip over in a second player.
+            VideoPage(url: client.videoURL(item.path), isActive: currentPosition == index && index < items.count)
                 .onTapGesture { showsChrome.toggle() }
                 // Lets the E2E tell a video page from an image page without
                 // knowing anything about the library's contents.
@@ -140,7 +180,7 @@ struct ViewerView: View {
     private var dismissGesture: some Gesture {
         DragGesture(minimumDistance: 14)
             .updating($isDragging) { value, dragging, transaction in
-                guard !isClosing,
+                guard !isClosing, flight == nil,
                       ViewerGesture.isDismissDrag(translation: value.translation, scale: currentScale)
                 else { return }
                 // Sticky for the rest of the gesture: once a dismiss is in
@@ -150,9 +190,9 @@ struct ViewerView: View {
                 transaction.animation = .easeOut(duration: 0.15)
             }
             .onChanged { value in
-                // A drag that starts during the closing animation must not
-                // drag a picture that is on its way out.
-                guard !isClosing,
+                // A drag that starts during the opening or closing animation
+                // must not drag a picture that is on its way in or out.
+                guard !isClosing, flight == nil,
                       ViewerGesture.isDismissDrag(translation: value.translation, scale: currentScale)
                 else { return }
                 // No implicit animation during the drag — it must track the finger.
@@ -163,7 +203,7 @@ struct ViewerView: View {
                 // curved swipe (right 200pt, then hooking down to 320pt) from
                 // paging *and* slamming the viewer shut: every intermediate
                 // sample failed the dominance test, so no dismiss ever started.
-                guard !isClosing, dismissTranslation != .zero else { return }
+                guard !isClosing, flight == nil, dismissTranslation != .zero else { return }
 
                 let commit = ViewerGesture.shouldCommitDismiss(
                     translation: value.translation,
@@ -171,30 +211,94 @@ struct ViewerView: View {
                     scale: currentScale
                 )
                 if commit {
-                    finishDismiss()
+                    close()
                 } else {
                     withAnimation(.spring(duration: 0.25)) { dismissTranslation = .zero }
                 }
             }
     }
 
-    /// Carry the drag through to the end, then close without the presentation's
-    /// own slide: that animation starts from a full-size, opaque player and
-    /// contradicts the shrinking one the finger just left.
-    private func finishDismiss() {
-        withAnimation(.easeOut(duration: 0.2)) {
+    /// Closes into the current item's cell when it is on screen.
+    ///
+    /// Otherwise a drag is carried through to the end and the player closes
+    /// without the presentation's own slide: that animation starts from a
+    /// full-size, opaque player and contradicts the shrinking one the finger
+    /// just left. The button, with nothing in flight, keeps the plain cover.
+    private func close() {
+        guard !isClosing else { return }
+        let dragged = dismissTranslation != .zero
+        // Not while zoomed: the flight starts from the fitted picture, and the
+        // snap back to it would be the first thing the user sees.
+        if !ViewerGesture.isZoomed(currentScale),
+           let index = currentIndex,
+           let cell = cellFrame?(items[index]),
+           cell.intersects(screen)
+        {
+            flight = ViewerFlight(
+                item: items[index],
+                cell: cell,
+                atCell: false,
+                scale: 1 - collapse * 0.25,
+                offset: max(dismissTranslation.height, 0)
+            )
             isClosing = true
-        } completion: {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) { onClose() }
+            fly(toCell: true) { closeWithoutAnimation() }
+        } else if dragged {
+            withAnimation(.easeOut(duration: 0.2)) {
+                isClosing = true
+            } completion: {
+                closeWithoutAnimation()
+            }
+        } else {
+            onClose()
         }
+    }
+
+    /// Opens out of the tapped cell. The presenter has already shown the cover
+    /// without its slide whenever there is a cell to open out of.
+    private func flyOut(_ item: MediaItem) {
+        guard let cell = cellFrame?(item) else { return }
+        flight = ViewerFlight(item: item, cell: cell, atCell: true)
+        fly(toCell: false) { flight = nil }
+    }
+
+    /// Animates the flight to one end. Deferred a turn so the picture is first
+    /// drawn at the end it starts from — set in the same update, SwiftUI would
+    /// only ever see the destination.
+    private func fly(toCell: Bool, completion: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            withAnimation(.spring(duration: 0.35, bounce: 0)) {
+                flight?.atCell = toCell
+            } completion: {
+                completion()
+            }
+        }
+    }
+
+    private func closeWithoutAnimation() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { onClose() }
+    }
+
+    /// The wall shows a video by its poster, and that is the picture in its cell.
+    private func flightURL(for item: MediaItem) -> URL {
+        item.isVideo ? client.posterURL(item.path) : client.thumbnailURL(item.path)
+    }
+
+    /// Off the extra page after the last and onto the real first one. Without
+    /// animation: both show the same picture, so the jump cannot be seen.
+    private func settleLoop() {
+        guard wraps, currentPosition == items.count else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { currentPosition = 0 }
     }
 
     private var chrome: some View {
         VStack {
             HStack(spacing: 12) {
-                Button(action: onClose) {
+                Button(action: close) {
                     Image(systemName: "xmark")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(.white)
@@ -265,8 +369,8 @@ struct ViewerView: View {
     }
 
     private var currentIndex: Int? {
-        guard let currentPosition, items.indices.contains(currentPosition) else { return nil }
-        return currentPosition
+        guard let currentPosition else { return nil }
+        return ViewerLoop.itemIndex(page: currentPosition, count: items.count, wraps: wraps)
     }
 
     /// Re-created whenever something should restart the timer.
@@ -283,14 +387,21 @@ struct ViewerView: View {
         try? await Task.sleep(nanoseconds: UInt64(dwell * 1_000_000_000))
         guard !Task.isCancelled, autoAdvance else { return }
         guard let now = currentIndex,
+              // The same rule as swiping: the loaded end of a folder still
+              // paging in waits for the next page instead of restarting.
               let next = AutoAdvance.nextIndex(
-                  current: now, count: items.count, wraps: !unbounded
+                  current: now, count: items.count, wraps: wraps
               )
         else { return }
         if next < now {
-            // Wrapping to the start: animating would sweep the scroll position
-            // across the entire LazyHStack.
-            currentPosition = next
+            // Onto the extra page that repeats the first, the same one-page
+            // move a swipe makes, then off it onto the real first page.
+            // Animating straight to page 0 would sweep across the whole pager.
+            withAnimation(.easeInOut(duration: 0.3)) {
+                currentPosition = items.count
+            } completion: {
+                settleLoop()
+            }
         } else {
             withAnimation(.easeInOut(duration: 0.3)) { currentPosition = next }
         }
@@ -303,6 +414,22 @@ struct ViewerView: View {
 
     /// How close to the loaded end triggers another page.
     static let prefetchMargin = 10
+}
+
+/// Runs `action` whenever the scroll view comes to rest, on systems that report
+/// scroll phases.
+private struct OnScrollIdle: ViewModifier {
+    let action: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18, macOS 15, *) {
+            content.onScrollPhaseChange { _, phase in
+                if phase == .idle { action() }
+            }
+        } else {
+            content
+        }
+    }
 }
 
 /// Pinch/double-tap zoom over a remote image.

@@ -95,7 +95,8 @@ struct FolderView: View {
             spacing: 0,
             aspectRatio: { $0.aspectRatio },
             onNearEnd: { Task { await store.loadMoreIfNeeded() } },
-            scroll: scroll
+            scroll: scroll,
+            reveal: { [presenter] in presenter.focused.map { WallEntry.media($0).id } }
         ) { entry, size in
             Button {
                 // A pinch that starts on a cell has to resize the wall, not
@@ -110,6 +111,7 @@ struct FolderView: View {
             // On the button itself, not inside its label — a Button absorbs the
             // accessibility of its content, which would hide the identifier.
             .accessibilityIdentifier(WallCell.identifier(for: entry))
+            .modifier(ZoomSource(entry: entry))
         }
         .accessibilityIdentifier("masonry-wall")
         // Edge to edge at the top, the way it already is at the bottom.
@@ -222,17 +224,23 @@ struct FolderView: View {
         let all = store.mediaEntries
         guard let index = all.firstIndex(of: media) else { return }
         let paged = store.view.isPaged
-        presenter.present(
-            items: all,
-            startIndex: index,
-            totalCount: paged ? store.total : nil,
-            extend: paged
-                ? { [store] in
-                    await store.loadMoreIfNeeded()
-                    return store.mediaEntries
-                }
-                : nil
-        )
+        // Opening out of the cell is the player's own animation; the cover's
+        // slide-up on top of it would carry the picture away from the cell.
+        var transaction = Transaction()
+        transaction.disablesAnimations = presenter.cellFrame(of: media) != nil
+        withTransaction(transaction) {
+            presenter.present(
+                items: all,
+                startIndex: index,
+                totalCount: paged ? store.total : nil,
+                extend: paged
+                    ? { [store] in
+                        await store.loadMoreIfNeeded()
+                        return store.mediaEntries
+                    }
+                    : nil
+            )
+        }
     }
 
     /// `random` is an action, not a view: nothing stays selected, and closing

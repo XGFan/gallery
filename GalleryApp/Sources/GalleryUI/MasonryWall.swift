@@ -98,6 +98,12 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
     /// Fed from the cells' own appear/disappear callbacks — see ScrollIntent for
     /// why measuring an offset does not work here.
     let scroll: ScrollIntent
+    /// The item the player is showing. The wall follows it underneath, so that
+    /// closing the player has a cell on screen to land in.
+    ///
+    /// A closure, read only inside `WallReveal`: read here, every page turn in
+    /// the player would re-run this body and re-partition the whole wall.
+    var reveal: () -> Item.ID? = { nil }
     @ViewBuilder let cell: (Item, CGSize) -> Cell
 
     /// How many items from the end count as "near the end". One screenful is
@@ -190,6 +196,9 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
             // the scroll for the duration stops the two from fighting.
             .simultaneousGesture(pinch(scrollProxy: scrollProxy))
             .scrollDisabled(pinchBaseColumns != nil)
+            .background {
+                WallReveal(target: reveal, columns: columns, scrollProxy: scrollProxy)
+            }
             .onAppear(perform: rebuildIndex)
             .onChange(of: items.count) { _, _ in rebuildIndex() }
             .onDisappear {
@@ -263,5 +272,30 @@ struct MasonryWall<Item: Identifiable & Hashable, Cell: View>: View {
     private func endPinch() {
         pinchBaseColumns = nil
         pinchAnchor = nil
+    }
+}
+
+/// Scrolls the wall to whatever the player is showing.
+private struct WallReveal<Item: Identifiable>: View {
+    let target: () -> Item.ID?
+    let columns: [[Item]]
+    let scrollProxy: ScrollViewProxy
+
+    var body: some View {
+        Color.clear
+            // Only as the player moves on, not as it opens: the tapped cell is
+            // where the picture is flying out of, and the wall must hold still
+            // under it.
+            .onChange(of: target()) { old, new in
+                guard old != nil, let new,
+                      let column = columns.firstIndex(where: { $0.contains { $0.id == new } })
+                else { return }
+                // `scrollTo` lines the anchor up on both axes, and it will scroll
+                // this vertical wall sideways to do it — which then stays shifted,
+                // half a column off screen. Choosing the x at which the cell
+                // already lines up keeps the move purely vertical.
+                let x = columns.count > 1 ? CGFloat(column) / CGFloat(columns.count - 1) : 0.5
+                scrollProxy.scrollTo(new, anchor: UnitPoint(x: x, y: 0.5))
+            }
     }
 }

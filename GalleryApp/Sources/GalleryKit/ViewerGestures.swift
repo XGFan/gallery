@@ -131,3 +131,57 @@ enum AutoAdvance {
         return current + 1
     }
 }
+
+/// Swiping past the last item lands on the first.
+///
+/// The pager carries one extra page after the last that repeats the first item,
+/// and jumps onto the real first page once the swipe settles — so the swipe
+/// itself is an ordinary one-page move instead of a sweep back across the whole
+/// sequence.
+enum ViewerLoop {
+    /// Only a sequence that is all there wraps. Past the loaded end of a paged
+    /// folder lies its next page, not its first item; and a `random` stream has
+    /// no end to wrap at (docs/adr/0008).
+    static func wraps(count: Int, totalCount: Int?, unbounded: Bool) -> Bool {
+        guard !unbounded, count > 1 else { return false }
+        return count >= (totalCount ?? count)
+    }
+
+    static func pageCount(count: Int, wraps: Bool) -> Int {
+        wraps ? count + 1 : count
+    }
+
+    /// The item a page shows. The extra page is `count` and shows item 0.
+    static func itemIndex(page: Int, count: Int, wraps: Bool) -> Int? {
+        if wraps, page == count { return 0 }
+        return (0..<count).contains(page) ? page : nil
+    }
+}
+
+/// Geometry of the picture flying between its cell on the wall and the player.
+enum ViewerZoom {
+    /// Where a picture sits when fitted whole inside `bounds` — the player.
+    static func fit(aspect: Double, in bounds: CGRect) -> CGRect {
+        place(aspect: aspect, in: bounds, fill: false)
+    }
+
+    /// Where a picture sits when cropped to fill `bounds` — a wall cell.
+    static func fill(aspect: Double, in bounds: CGRect) -> CGRect {
+        place(aspect: aspect, in: bounds, fill: true)
+    }
+
+    private static func place(aspect: Double, in bounds: CGRect, fill: Bool) -> CGRect {
+        guard aspect > 0, bounds.width > 0, bounds.height > 0 else { return bounds }
+        let ratio = CGFloat(aspect)
+        let widthLimited = (bounds.width / bounds.height < ratio) != fill
+        let size = widthLimited
+            ? CGSize(width: bounds.width, height: bounds.width / ratio)
+            : CGSize(width: bounds.height * ratio, height: bounds.height)
+        return CGRect(
+            x: bounds.midX - size.width / 2,
+            y: bounds.midY - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
+    }
+}

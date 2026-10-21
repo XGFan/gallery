@@ -178,8 +178,21 @@ struct RootView: View {
             onClose: { presenter.dismiss() },
             onNearEnd: { Task { await presenter.requestMore() } },
             totalCount: context.totalCount,
-            unbounded: context.unbounded
+            unbounded: context.unbounded,
+            // iOS only, and never for `random`: a random sample has no cell
+            // it was opened from, and closing must put the user back exactly
+            // where they were rather than wherever the stream wandered.
+            cellFrame: zoomsWithWall(context) ? { presenter.cellFrame(of: $0) } : nil,
+            onFocus: zoomsWithWall(context) ? { presenter.focus($0) } : nil
         )
+    }
+
+    private func zoomsWithWall(_ context: ViewerContext) -> Bool {
+        #if os(iOS)
+        !context.unbounded
+        #else
+        false
+        #endif
     }
 
     private var viewerBinding: Binding<ViewerContext?> {

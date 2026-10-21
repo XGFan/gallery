@@ -40,9 +40,24 @@ final class ViewerPresenter {
             // Clearing the context from the outside (the iOS cover's binding,
             // a swipe-down dismiss) must not leave the previous sequence's
             // grow-closure behind for the next one to inherit.
-            if context == nil { extend = nil }
+            if context == nil {
+                extend = nil
+                focused = nil
+            }
         }
     }
+
+    /// The item on screen in the player. Its cell on the wall stays hidden while
+    /// the player is open — the picture is out of it — and the wall scrolls to
+    /// keep that cell on screen, so closing has somewhere to land.
+    private(set) var focused: MediaItem?
+
+    /// Where each wall cell currently is, in window coordinates, so the player
+    /// can open out of the tapped cell and close back into the current item's.
+    ///
+    /// Ignored by observation on purpose: it is written on every frame of a
+    /// wall scroll, and nothing should re-render because of it.
+    @ObservationIgnored private var cellFrames: [String: CGRect] = [:]
 
     /// Returns the grown item list, or nil when there is nothing more.
     private var extend: (() async -> [MediaItem]?)?
@@ -62,6 +77,26 @@ final class ViewerPresenter {
             totalCount: totalCount,
             unbounded: unbounded
         )
+    }
+
+    func focus(_ item: MediaItem) {
+        focused = item
+    }
+
+    func isShowing(_ item: MediaItem) -> Bool {
+        context != nil && focused?.path == item.path
+    }
+
+    func noteFrame(_ frame: CGRect, of item: MediaItem) {
+        cellFrames[item.path] = frame
+    }
+
+    func forgetFrame(of item: MediaItem) {
+        cellFrames[item.path] = nil
+    }
+
+    func cellFrame(of item: MediaItem) -> CGRect? {
+        cellFrames[item.path]
     }
 
     /// Called as the player nears the end of what it holds. Without it the

@@ -153,6 +153,55 @@ extension AutoAdvanceTests {
     }
 }
 
+final class ViewerLoopTests: XCTestCase {
+    /// Only a sequence that is all there wraps: past the loaded end of a paged
+    /// folder lies its next page, and a random stream has no end at all.
+    func testOnlyACompleteSequenceWraps() {
+        XCTAssertTrue(ViewerLoop.wraps(count: 30, totalCount: nil, unbounded: false))
+        XCTAssertTrue(ViewerLoop.wraps(count: 30, totalCount: 30, unbounded: false))
+        XCTAssertFalse(
+            ViewerLoop.wraps(count: 30, totalCount: 120, unbounded: false),
+            "a paged folder still loading must page in more, not jump to the start"
+        )
+        XCTAssertFalse(ViewerLoop.wraps(count: 30, totalCount: nil, unbounded: true))
+        XCTAssertFalse(ViewerLoop.wraps(count: 1, totalCount: nil, unbounded: false),
+                       "a single item has nowhere to wrap to")
+    }
+
+    /// The extra page after the last shows the first item, and is the only
+    /// page that does not map to itself.
+    func testTheExtraPageShowsTheFirstItem() {
+        XCTAssertEqual(ViewerLoop.pageCount(count: 3, wraps: true), 4)
+        XCTAssertEqual(ViewerLoop.itemIndex(page: 3, count: 3, wraps: true), 0)
+        XCTAssertEqual(ViewerLoop.itemIndex(page: 2, count: 3, wraps: true), 2)
+        XCTAssertEqual(ViewerLoop.itemIndex(page: 0, count: 3, wraps: true), 0)
+    }
+
+    func testWithoutWrappingThereIsNoExtraPage() {
+        XCTAssertEqual(ViewerLoop.pageCount(count: 3, wraps: false), 3)
+        XCTAssertNil(ViewerLoop.itemIndex(page: 3, count: 3, wraps: false))
+        XCTAssertNil(ViewerLoop.itemIndex(page: -1, count: 3, wraps: true))
+    }
+}
+
+/// The two ends of the flight between a wall cell and the player.
+final class ViewerZoomTests: XCTestCase {
+    func testFitShowsTheWholePictureAndFillCoversTheCell() {
+        let screen = CGRect(x: 0, y: 0, width: 400, height: 800)
+        // A landscape picture on a portrait screen: full width, centred.
+        XCTAssertEqual(
+            ViewerZoom.fit(aspect: 2, in: screen),
+            CGRect(x: 0, y: 300, width: 400, height: 200)
+        )
+        // The same picture filling a square cell overhangs it sideways.
+        let cell = CGRect(x: 10, y: 20, width: 100, height: 100)
+        XCTAssertEqual(
+            ViewerZoom.fill(aspect: 2, in: cell),
+            CGRect(x: -40, y: 20, width: 200, height: 100)
+        )
+    }
+}
+
 /// The navigation mapping from docs/adr/0007 — which view each entry point
 /// lands in. It is a table, it is easy to get subtly wrong, and getting it wrong
 /// is invisible until someone notices they keep landing in the wrong view.
@@ -465,6 +514,24 @@ final class ViewerPresenterTests: XCTestCase {
 
         XCTAssertEqual(presenter.context?.items.count, 1)
         XCTAssertEqual(presenter.context?.items.first?.path, "other/x")
+    }
+
+    /// The focused item's cell is hidden while the player shows it. Leaving
+    /// the focus behind after closing would leave a hole in the wall.
+    func testFocusFollowsThePlayerAndEndsWithIt() {
+        let presenter = ViewerPresenter()
+        let items = media(3)
+        presenter.present(items: items, startIndex: 1)
+        presenter.focus(items[1])
+        XCTAssertTrue(presenter.isShowing(items[1]))
+
+        presenter.focus(items[2])
+        XCTAssertFalse(presenter.isShowing(items[1]))
+        XCTAssertTrue(presenter.isShowing(items[2]))
+
+        presenter.dismiss()
+        XCTAssertFalse(presenter.isShowing(items[2]))
+        XCTAssertNil(presenter.focused)
     }
 
     func testPresentingNothingDoesNotOpenThePlayer() {
