@@ -14,7 +14,6 @@ struct WallCell: View {
             thumbnail
             overlay
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .contentShape(Rectangle())
     }
 

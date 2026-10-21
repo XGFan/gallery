@@ -90,7 +90,9 @@ struct FolderView: View {
             items: store.entries,
             columnCount: columnBinding,
             columnRange: WallColumns.range,
-            spacing: 4,
+            // Edge to edge between cells too: the wall is one surface of
+            // pictures, not a grid of cards.
+            spacing: 0,
             aspectRatio: { $0.aspectRatio },
             onNearEnd: { Task { await store.loadMoreIfNeeded() } },
             scroll: scroll
